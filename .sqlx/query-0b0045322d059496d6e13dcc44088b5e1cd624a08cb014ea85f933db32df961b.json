@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE job_attempt\n                SET state = 'failed',\n                    finished_at = now(),\n                    error_class = 'lease_expired',\n                    retryable = true\n                WHERE job_id = $1\n                  AND state = 'running'\n                  AND attempt_number = $2\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0b0045322d059496d6e13dcc44088b5e1cd624a08cb014ea85f933db32df961b"
+}

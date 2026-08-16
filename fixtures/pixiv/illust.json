@@ -1,0 +1,126 @@
+{
+  "illustration": {
+    "error": false,
+    "message": "",
+    "body": {
+      "illustId": "1001",
+      "illustTitle": "Blue Illustration",
+      "description": "Synthetic illustration fixture",
+      "illustType": 0,
+      "createDate": "2026-07-20T10:20:30+09:00",
+      "uploadDate": "2026-07-21T11:22:33+09:00",
+      "xRestrict": 0,
+      "aiType": 1,
+      "isOriginal": true,
+      "userId": "501",
+      "userName": "Fixture Artist",
+      "userAccount": "fixture_artist",
+      "pageCount": 1,
+      "width": 2400,
+      "height": 3200,
+      "bookmarkCount": 1234,
+      "likeCount": 456,
+      "commentCount": 12,
+      "viewCount": 9876,
+      "tags": {
+        "tags": [
+          {
+            "tag": "オリジナル",
+            "translation": {
+              "en": "original"
+            }
+          },
+          {
+            "tag": "青"
+          }
+        ]
+      },
+      "bookmarkData": {
+        "id": "9001",
+        "private": false
+      },
+      "seriesNavData": {
+        "seriesId": "71",
+        "title": "Fixture Series",
+        "order": 3
+      }
+    }
+  },
+  "manga": {
+    "error": false,
+    "message": "",
+    "body": {
+      "illustId": "1002",
+      "illustTitle": "Fixture Manga",
+      "description": "",
+      "illustType": 1,
+      "createDate": "2026-07-19T01:02:03Z",
+      "uploadDate": "2026-07-19T01:02:03Z",
+      "xRestrict": 1,
+      "aiType": 2,
+      "isOriginal": false,
+      "userId": "502",
+      "userName": "Manga Artist",
+      "userAccount": "manga_artist",
+      "pageCount": 2,
+      "width": 1800,
+      "height": 2600,
+      "bookmarkCount": 500,
+      "likeCount": 200,
+      "commentCount": 4,
+      "viewCount": 2000,
+      "tags": {
+        "tags": [
+          {
+            "tag": "漫画",
+            "translation": {
+              "en": "manga"
+            }
+          }
+        ]
+      },
+      "bookmarkData": null,
+      "seriesNavData": null
+    }
+  },
+  "ugoira": {
+    "error": false,
+    "message": "",
+    "body": {
+      "illustId": "1003",
+      "illustTitle": "Fixture Ugoira",
+      "description": "Animated fixture",
+      "illustType": 2,
+      "createDate": "2026-07-18T04:05:06Z",
+      "uploadDate": "2026-07-18T04:05:06Z",
+      "xRestrict": 2,
+      "aiType": 0,
+      "isOriginal": false,
+      "userId": "503",
+      "userName": "Ugoira Artist",
+      "userAccount": "ugoira_artist",
+      "pageCount": 1,
+      "width": 1920,
+      "height": 1080,
+      "bookmarkCount": 777,
+      "likeCount": 333,
+      "commentCount": 8,
+      "viewCount": 4321,
+      "tags": {
+        "tags": [
+          {
+            "tag": "うごイラ",
+            "translation": {
+              "en": "ugoira"
+            }
+          }
+        ]
+      },
+      "bookmarkData": {
+        "id": "9003",
+        "private": true
+      },
+      "seriesNavData": null
+    }
+  }
+}

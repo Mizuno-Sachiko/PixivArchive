@@ -1,0 +1,19 @@
+{
+  "error": false,
+  "message": "",
+  "body": {
+    "illusts": {
+      "1003": null,
+      "1001": null,
+      "0": null,
+      "invalid": null
+    },
+    "manga": {
+      "1002": null,
+      "1001": null
+    },
+    "novels": {
+      "8001": null
+    }
+  }
+}

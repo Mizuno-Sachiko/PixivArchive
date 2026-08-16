@@ -1,0 +1,65 @@
+:root {
+  --font-ui:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --font-mono:
+    ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Consolas, monospace;
+
+  --color-bg: #f4f6f8;
+  --color-bg-subtle: #edf1f5;
+  --color-surface-1: #ffffff;
+  --color-surface-2: #f6f8fa;
+  --color-surface-3: #e9eef3;
+  --color-text-1: #1f2a37;
+  --color-text-2: #536171;
+  --color-text-3: #7d8997;
+  --color-border: rgba(39, 57, 77, 0.14);
+  --color-primary: #0096fa;
+  --color-primary-hover: #0086df;
+  --color-primary-pressed: #0872be;
+  --color-primary-soft: rgba(0, 150, 250, 0.11);
+  --color-success: #1f9d68;
+  --color-warning: #d38411;
+  --color-warning-soft: #fff4d8;
+  --color-error: #db4b55;
+  --color-error-soft: #ffeaec;
+  --color-viewer-bg: #e4e7eb;
+  --color-glass: rgba(255, 255, 255, 0.8);
+  --color-glass-strong: rgba(255, 255, 255, 0.94);
+  --shadow-float: 0 18px 60px rgba(28, 47, 69, 0.16);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+  --topbar-height: 64px;
+  --secondary-nav-height: 43px;
+  --control-height-md: 38px;
+  --control-height-sm: 34px;
+  --content-width: 1480px;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #081019;
+  --color-bg-subtle: #0b1622;
+  --color-surface-1: #101923;
+  --color-surface-2: #172331;
+  --color-surface-3: #203044;
+  --color-text-1: #eaf0f7;
+  --color-text-2: #b8c3cf;
+  --color-text-3: #7f8da0;
+  --color-border: rgba(166, 205, 245, 0.18);
+  --color-primary: #0096fa;
+  --color-primary-hover: #37a9ff;
+  --color-primary-pressed: #0872be;
+  --color-primary-soft: rgba(0, 150, 250, 0.16);
+  --color-success: #48c78e;
+  --color-warning: #f0b34a;
+  --color-warning-soft: #302715;
+  --color-error: #ff747f;
+  --color-error-soft: #351b22;
+  --color-viewer-bg: #11151a;
+  --color-glass: rgba(10, 20, 31, 0.78);
+  --color-glass-strong: rgba(16, 25, 35, 0.96);
+  --shadow-float: 0 20px 70px rgba(0, 0, 0, 0.46);
+}

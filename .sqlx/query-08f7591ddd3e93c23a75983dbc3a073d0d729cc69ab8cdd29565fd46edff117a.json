@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE job_attempt\n        SET state = $2,\n            finished_at = now(),\n            error_class = $3,\n            retryable = $4,\n            message = $5\n        WHERE job_id = $1\n          AND state = 'running'\n          AND attempt_number = (\n              SELECT max(attempt_number) FROM job_attempt WHERE job_id = $1\n          )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "08f7591ddd3e93c23a75983dbc3a073d0d729cc69ab8cdd29565fd46edff117a"
+}

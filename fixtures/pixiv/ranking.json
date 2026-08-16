@@ -1,0 +1,43 @@
+{
+  "contents": [
+    {
+      "illust_id": 1001,
+      "title": "Blue Illustration",
+      "illust_type": "0",
+      "illust_page_count": "1",
+      "user_id": 501,
+      "user_name": "Fixture Artist",
+      "rank": 1,
+      "yes_rank": 4,
+      "width": 2400,
+      "height": 3200,
+      "tags": ["オリジナル", "青"],
+      "attr": "original",
+      "is_bookmarked": true,
+      "view_count": 9876
+    },
+    {
+      "illust_id": 1003,
+      "title": "Fixture Ugoira",
+      "illust_type": "2",
+      "illust_page_count": "1",
+      "user_id": 503,
+      "user_name": "Ugoira Artist",
+      "rank": 2,
+      "yes_rank": false,
+      "width": 1920,
+      "height": 1080,
+      "tags": ["うごイラ"],
+      "attr": "",
+      "is_bookmarked": false,
+      "view_count": 4321
+    }
+  ],
+  "mode": "daily",
+  "content": "all",
+  "page": 1,
+  "prev": false,
+  "next": 2,
+  "date": "20260729",
+  "rank_total": 500
+}

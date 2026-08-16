@@ -1,0 +1,45 @@
+{
+  "error": false,
+  "message": "",
+  "body": {
+    "page": {
+      "ids": ["1003", "1001"]
+    },
+    "tagTranslation": {
+      "うごイラ": {
+        "en": "ugoira"
+      },
+      "オリジナル": {
+        "en": "original"
+      }
+    },
+    "thumbnails": {
+      "illust": [
+        {
+          "id": "1001",
+          "title": "Blue Illustration",
+          "illustType": 0,
+          "xRestrict": 0,
+          "aiType": 1,
+          "userId": "501",
+          "userName": "Fixture Artist",
+          "pageCount": 1,
+          "tags": ["オリジナル"],
+          "isOriginal": true
+        },
+        {
+          "id": "1003",
+          "title": "Fixture Ugoira",
+          "illustType": 2,
+          "xRestrict": 2,
+          "aiType": 0,
+          "userId": "503",
+          "userName": "Ugoira Artist",
+          "pageCount": 1,
+          "tags": ["うごイラ"],
+          "isOriginal": false
+        }
+      ]
+    }
+  }
+}

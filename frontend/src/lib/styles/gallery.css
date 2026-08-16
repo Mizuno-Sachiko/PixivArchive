@@ -1,0 +1,172 @@
+.gallery-page {
+  display: grid;
+  gap: 18px;
+}
+
+.gallery-heading p {
+  max-width: 620px;
+  margin: 0;
+  color: var(--color-text-3);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.gallery-status {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--color-text-3);
+  font-size: 0.72rem;
+}
+
+.context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  overflow-anchor: none;
+}
+
+.context-card {
+  position: relative;
+  display: grid;
+  height: 176px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-1);
+  transition:
+    border-color var(--motion-base) var(--ease-standard),
+    transform var(--motion-base) var(--ease-standard);
+}
+
+.context-card.has-cover::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(8, 12, 18, 0.82),
+    rgba(8, 12, 18, 0.08) 72%
+  );
+  content: '';
+}
+
+.context-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.context-copy {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  min-width: 0;
+  gap: 0.3rem;
+  align-self: end;
+  padding: 1rem;
+}
+
+.context-copy strong,
+.context-copy span,
+.context-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-copy strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.context-copy span,
+.context-copy small {
+  white-space: nowrap;
+}
+
+.context-card.has-cover .context-copy strong {
+  color: #fff;
+}
+
+.context-card.has-cover .context-copy span,
+.context-card.has-cover .context-copy small {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.context-card:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  transform: translateY(-2px);
+}
+
+.context-card-skeleton {
+  align-content: end;
+  gap: 0.55rem;
+  padding: 1rem;
+  border-color: transparent;
+  background:
+    linear-gradient(
+        110deg,
+        transparent 25%,
+        rgba(255, 255, 255, 0.12) 45%,
+        transparent 65%
+      )
+      100% 0 / 240% 100%,
+    var(--color-surface-2);
+  animation: context-skeleton-pulse 1.35s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.context-skeleton-line {
+  display: block;
+  height: 0.7rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-3);
+}
+
+.context-skeleton-title {
+  width: 58%;
+}
+
+.context-skeleton-meta {
+  width: 36%;
+}
+
+@keyframes context-skeleton-pulse {
+  to {
+    background-position: -140% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-card-skeleton {
+    animation: none;
+  }
+}
+
+.context-card strong {
+  font-size: 0.94rem;
+}
+
+.context-card span,
+.context-card small {
+  color: var(--color-text-3);
+  font-size: 0.7rem;
+}
+
+.work-badge {
+  display: inline-flex;
+  min-height: 23px;
+  align-items: center;
+  padding: 0 0.5rem;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.68);
+  color: #fff;
+  font-size: 0.66rem;
+  font-weight: 720;
+  backdrop-filter: blur(10px);
+}

@@ -1,0 +1,31 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# SvelteKit and Node
+/frontend/node_modules/
+/frontend/.svelte-kit/
+/frontend/build/
+/frontend/coverage/
+/frontend/playwright-report/
+/frontend/test-results/
+/frontend/.vite/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Runtime and release artifacts
+/data/
+/media/
+/dist/
+/artifacts/
+/.runtime/
+*.log
+
+# Operating-system files
+.DS_Store
+Thumbs.db

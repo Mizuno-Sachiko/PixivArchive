@@ -1,0 +1,22 @@
+[package]
+name = "pixivarchive-db"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pixivarchive-domain = { path = "../domain" }
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tracing.workspace = true
+url.workspace = true
+uuid.workspace = true
+base64.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

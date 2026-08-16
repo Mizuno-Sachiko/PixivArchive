@@ -1,0 +1,18 @@
+.glass-surface {
+  background: var(--color-glass);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(22px) saturate(135%);
+}
+
+.solid-surface {
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass-surface {
+    background: var(--color-glass-strong);
+    backdrop-filter: none;
+  }
+}

@@ -1,0 +1,9 @@
+node_modules
+.svelte-kit
+build
+coverage
+playwright-report
+test-results
+pnpm-lock.yaml
+src/lib/api/schema.d.ts
+src/lib/api/rule-catalog.generated.ts

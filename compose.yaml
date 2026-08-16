@@ -1,0 +1,72 @@
+name: pixivarchive
+
+x-application-environment: &application-environment
+  DATABASE_URL: postgresql://pixivarchive:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/pixivarchive
+  PIXIVARCHIVE_MEDIA_ROOT: /data/media
+  RUST_LOG: ${RUST_LOG:-pixivarchive=info,tower_http=info}
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  ALL_PROXY: ${ALL_PROXY:-}
+  NO_PROXY: ${NO_PROXY:-127.0.0.1,localhost,postgres}
+
+x-application: &application
+  image: ghcr.io/mizuno-sachiko/pixivarchive:0.1.0
+  pull_policy: missing
+  restart: unless-stopped
+  environment: *application-environment
+  volumes:
+    - type: bind
+      source: ${PIXIVARCHIVE_MEDIA_HOST_PATH:?PIXIVARCHIVE_MEDIA_HOST_PATH is required}
+      target: /data/media
+      bind:
+        create_host_path: false
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pixivarchive
+      POSTGRES_USER: pixivarchive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U pixivarchive -d pixivarchive]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - pixivarchive-postgres:/var/lib/postgresql/data
+
+  prepare:
+    <<: *application
+    restart: "no"
+    command: pixivarchive-admin prepare
+    environment:
+      <<: *application-environment
+      PIXIVARCHIVE_ADMIN_PASSWORD: ${PIXIVARCHIVE_ADMIN_PASSWORD:?PIXIVARCHIVE_ADMIN_PASSWORD is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    <<: *application
+    command: pixivarchive-web
+    environment:
+      <<: *application-environment
+      PIXIVARCHIVE_WEB_BIND: 0.0.0.0:7088
+      PIXIVARCHIVE_STATIC_ROOT: /opt/pixivarchive/frontend
+    ports:
+      - ${PIXIVARCHIVE_WEB_BIND:?PIXIVARCHIVE_WEB_BIND is required}:7088
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *application
+    command: pixivarchive-worker
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+
+volumes:
+  pixivarchive-postgres:

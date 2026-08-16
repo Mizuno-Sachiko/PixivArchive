@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO work_revision (id, work_id, title, work_kind, page_count, sanity_level)\n            VALUES ($1, $2, $3, 'illustration', 1, 'unknown')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6208ddc94d5faf0cbd1d9d724913962064cd49f159b8a4def4b928f6ab507f28"
+}

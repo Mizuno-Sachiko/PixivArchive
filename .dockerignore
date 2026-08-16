@@ -1,0 +1,30 @@
+.git
+.sqlx-tmp
+target
+dist
+artifacts
+frontend/node_modules
+frontend/.svelte-kit
+frontend/build
+frontend/coverage
+frontend/playwright-report
+frontend/test-results
+.env
+data
+media
+*.log
+
+# Documentation and screenshots
+assets
+docs
+
+# Test and verification assets
+apps/*/tests
+crates/*/tests
+crates/pixiv/src/mapper_tests.rs
+fixtures
+frontend/tests
+frontend/playwright.config.ts
+frontend/scripts
+frontend/src/**/*.test.*
+scripts

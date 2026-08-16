@@ -1,0 +1,37 @@
+[package]
+name = "pixivarchive-application"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pixivarchive-db = { path = "../db" }
+pixivarchive-domain = { path = "../domain" }
+pixivarchive-media = { path = "../media" }
+pixivarchive-pixiv = { path = "../pixiv" }
+argon2.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+chacha20poly1305.workspace = true
+constant_time_eq.workspace = true
+futures-util.workspace = true
+libc.workspace = true
+rand.workspace = true
+secrecy.workspace = true
+sha2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+pixivarchive-test-support = { path = "../test-support" }
+bytes.workspace = true
+image.workspace = true
+sqlx.workspace = true
+url.workspace = true
+zip.workspace = true

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "018ff4f4-0000-7000-8000-000000000001",
+  "name": "收藏数达到500",
+  "enabled": true,
+  "group_mode": "all",
+  "groups": [
+    {
+      "mode": "all",
+      "conditions": [
+        {
+          "field": "bookmark_count",
+          "operator": "greater_than_or_equal",
+          "value": {
+            "type": "number",
+            "value": 500
+          }
+        }
+      ]
+    }
+  ],
+  "action": "download",
+  "default_action": "ignore"
+}

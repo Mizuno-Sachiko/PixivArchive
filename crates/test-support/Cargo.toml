@@ -1,0 +1,22 @@
+[package]
+name = "pixivarchive-test-support"
+version.workspace = true
+edition.workspace = true
+publish = false
+rust-version.workspace = true
+
+[dependencies]
+pixivarchive-db = { path = "../db" }
+pixivarchive-domain = { path = "../domain" }
+pixivarchive-pixiv = { path = "../pixiv" }
+async-trait.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+image.workspace = true
+secrecy.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+time.workspace = true
+tokio.workspace = true
+url.workspace = true
+uuid.workspace = true

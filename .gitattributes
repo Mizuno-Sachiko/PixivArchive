@@ -1,0 +1,15 @@
+* text=auto eol=lf
+*.bash text eol=lf
+*.bats text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.rs text eol=lf
+*.toml text eol=lf
+Cargo.lock text eol=lf
+*.sql text eol=lf
+*.ts text eol=lf
+*.svelte text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf

@@ -1,0 +1,26 @@
+{
+  "error": false,
+  "message": "",
+  "body": {
+    "bookmarkTags": {},
+    "works": [
+      {
+        "id": "1002",
+        "title": "Fixture Manga",
+        "illustType": 1,
+        "xRestrict": 1,
+        "aiType": 2,
+        "userId": "502",
+        "userName": "Manga Artist",
+        "pageCount": 2,
+        "tags": ["漫画"],
+        "isOriginal": false,
+        "bookmarkData": {
+          "id": "9002",
+          "private": true
+        }
+      }
+    ],
+    "total": 101
+  }
+}

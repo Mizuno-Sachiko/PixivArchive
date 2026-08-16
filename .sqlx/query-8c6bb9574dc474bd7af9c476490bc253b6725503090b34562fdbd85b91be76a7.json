@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE work\n            SET collection_state = $2,\n                trashed_at = NULL,\n                updated_at = now(),\n                resource_revision = resource_revision + 1\n            WHERE id = $1\n            RETURNING resource_revision\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "resource_revision",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "work",
+            "name": "resource_revision"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8c6bb9574dc474bd7af9c476490bc253b6725503090b34562fdbd85b91be76a7"
+}
