@@ -14,7 +14,7 @@ use utoipa::{
     info(
         title = "PixivArchive API",
         description = "Single-user management API for PixivArchive",
-        version = "0.1.0"
+        version = "0.2.0"
     ),
     paths(
         crate::api::auth::login,
@@ -101,6 +101,7 @@ use utoipa::{
         crate::api::trash::purge_many,
         crate::api::trash::purge_all,
         crate::api::system::status,
+        crate::api::system::storage_usage,
         crate::api::system::settings,
         crate::api::system::update_settings,
         crate::api::system::update_setting,
@@ -245,6 +246,7 @@ use utoipa::{
         crate::api::system::ComponentStatusDto,
         crate::api::system::SystemStatusDto,
         crate::api::system::StorageStatusDto,
+        crate::api::system::MediaUsageDto,
         crate::api::system::SystemCapabilitiesDto,
         crate::api::system::SettingsDto,
         crate::api::system::EffectiveSettingsDto,

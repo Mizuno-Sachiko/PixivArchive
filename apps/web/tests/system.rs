@@ -326,6 +326,28 @@ async fn health_and_system_status_report_current_process_and_database() {
 }
 
 #[tokio::test]
+async fn storage_usage_reports_media_directory_bytes() {
+    let test = TestApp::new(709020026).await;
+    test.files.write_media("usage/nested.bin", &[0_u8; 7]);
+    let auth = login(&test.app).await;
+
+    let response = test
+        .app
+        .clone()
+        .oneshot(authenticated_get("/api/system/storage-usage", &auth))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        response_json(response).await["media_directory_bytes"]
+            .as_u64()
+            .unwrap()
+            >= 7
+    );
+}
+
+#[tokio::test]
 async fn system_status_reports_worker_before_first_heartbeat() {
     let test = TestApp::new(709020026).await;
     let auth = login(&test.app).await;
@@ -425,6 +447,7 @@ fn openapi_is_31_and_contains_every_management_surface() {
         "/api/trash",
         "/api/trash/selection",
         "/api/system/status",
+        "/api/system/storage-usage",
         "/api/system/settings",
         "/api/system/maintenance",
         "/api/following",
@@ -571,7 +594,14 @@ fn assert_gallery_contracts(openapi: &Value) {
         &schemas["GalleryWorkDetailDto"],
         &["ugoira", "trash_capabilities"],
     );
-    assert_required_fields(&schemas["WorkRevisionSummaryDto"], &["description"]);
+    assert_required_fields(
+        &schemas["WorkRevisionSummaryDto"],
+        &["description", "sources"],
+    );
+    assert_required_fields(
+        &schemas["WorkRevisionSourceDto"],
+        &["subscription_name", "pixiv_user_id"],
+    );
     assert_schema_enum_values(
         &schemas["PixivWorkKind"],
         &["illustration", "manga", "ugoira"],
@@ -655,6 +685,7 @@ fn assert_management_contracts(openapi: &Value) {
     assert_required_fields(&schemas["StorageSettingsDto"], &["media_root"]);
     assert!(schemas["ContentSettingsDto"].is_object());
     assert_required_fields(&schemas["StorageStatusDto"], &["active_media_root"]);
+    assert_required_fields(&schemas["MediaUsageDto"], &["media_directory_bytes"]);
     assert_eq!(
         schemas["JobKindDto"]["enum"],
         serde_json::json!([

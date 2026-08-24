@@ -1,4 +1,6 @@
-use pixivarchive_db::{Db, DbError, JobRepository, SavePixivWorkMetadata, WorkRepository};
+use pixivarchive_db::{
+    Db, DbError, JobRepository, SavePixivWorkMetadata, WorkRepository, WorkRevisionSourceInput,
+};
 use pixivarchive_domain::{
     job::{JobErrorClass, JobLease, JobPriority},
     pixiv::{
@@ -151,6 +153,14 @@ where
             pages: pages.expect("Pixiv pages were loaded before persistence"),
             ugoira,
             provenance,
+            revision_source: request
+                .revision_source
+                .map(|source| WorkRevisionSourceInput {
+                    subscription_id: source.subscription_id,
+                    subscription_run_id: source.subscription_run_id,
+                    subscription_name: source.subscription_name,
+                    pixiv_user_id: source.pixiv_user_id,
+                }),
         };
         let saved = match (lease, request.deletion_marker_policy) {
             (Some(lease), DeletionMarkerPolicy::Block) => {
@@ -244,6 +254,7 @@ pub struct ProcessPixivWork<'a> {
     pub forced: bool,
     pub rule_document: Option<&'a RuleDefinitionV1>,
     pub discovery: WorkDiscoveryContext,
+    pub revision_source: Option<CollectionSourceContext>,
     pub download_priority: JobPriority,
 }
 
@@ -257,6 +268,14 @@ pub enum DeletionMarkerPolicy {
 pub struct WorkDiscoveryContext {
     pub ranking_rank: Option<u32>,
     pub ranking_date: Option<OffsetDateTime>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CollectionSourceContext {
+    pub subscription_id: Uuid,
+    pub subscription_run_id: Uuid,
+    pub subscription_name: String,
+    pub pixiv_user_id: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -9,7 +9,8 @@ use axum::{
 use pixivarchive_application::{
     settings::{SettingUpdate, SettingValue},
     system::{
-        ComponentStatus, MaintenanceOperation, StorageStatus, SystemCapabilities, SystemStatus,
+        ComponentStatus, MaintenanceOperation, MediaUsage, StorageStatus, SystemCapabilities,
+        SystemStatus,
     },
 };
 use pixivarchive_domain::settings::SettingGroupKey;
@@ -29,6 +30,7 @@ pub(crate) use settings_contract::{
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/system/status", get(status))
+        .route("/system/storage-usage", get(storage_usage))
         .route("/system/settings", get(settings).put(update_settings))
         .route("/system/settings/{group}", put(update_setting))
         .route("/system/maintenance", post(queue_maintenance))
@@ -98,6 +100,19 @@ pub struct StorageStatusDto {
     pub write_stopped: bool,
 }
 
+#[derive(Clone, Debug, Serialize, ToSchema)]
+pub struct MediaUsageDto {
+    pub media_directory_bytes: u64,
+}
+
+impl From<MediaUsage> for MediaUsageDto {
+    fn from(usage: MediaUsage) -> Self {
+        Self {
+            media_directory_bytes: usage.media_directory_bytes,
+        }
+    }
+}
+
 impl From<StorageStatus> for StorageStatusDto {
     fn from(status: StorageStatus) -> Self {
         Self {
@@ -142,6 +157,22 @@ pub(crate) async fn status(
     State(state): State<AppState>,
 ) -> Result<Json<SystemStatusDto>, ApiError> {
     Ok(Json(state.system.status().await?.into()))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/system/storage-usage",
+    responses(
+        (status = 200, body = MediaUsageDto),
+        (status = 401, body = ApiErrorBody),
+        (status = 503, body = ApiErrorBody)
+    ),
+    tag = "System"
+)]
+pub(crate) async fn storage_usage(
+    State(state): State<AppState>,
+) -> Result<Json<MediaUsageDto>, ApiError> {
+    Ok(Json(state.system.media_usage().await?.into()))
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema)]

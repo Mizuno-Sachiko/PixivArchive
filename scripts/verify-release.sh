@@ -82,6 +82,7 @@ for required in \
   pixivarchive/LICENSE \
   pixivarchive/start.sh \
   pixivarchive/stop.sh \
+  pixivarchive/upgrade.sh \
   pixivarchive/README.md \
   pixivarchive/SOURCE_STATE; do
   if ! grep -Fxq "$required" <<<"$archive_entries"; then

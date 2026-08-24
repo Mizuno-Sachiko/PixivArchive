@@ -229,6 +229,20 @@ async fn work_import_saves_detail_tags_pages_counts_and_provenance() {
         row.metadata["provenance"]["detail"][0]["adapter_version"],
         "test"
     );
+    let revision_source_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM work_revision_source source
+        JOIN work_revision revision ON revision.id = source.work_revision_id
+        JOIN work ON work.id = revision.work_id
+        WHERE work.pixiv_work_id = $1
+        "#,
+    )
+    .bind(904_i64)
+    .fetch_one(locked.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(revision_source_count, 0);
 }
 
 #[tokio::test]

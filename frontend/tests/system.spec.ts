@@ -642,6 +642,12 @@ test('storage and maintenance expose protection thresholds and capabilities', as
   await expect(page.getByText('媒体写入已停止')).toBeVisible();
   await expect(page.getByText(/WebP\s*可用/)).toBeVisible();
   await expect(page.getByText(/AVIF\s*不可用/)).toBeVisible();
+  await expect(
+    page.getByText('媒体目录大小', { exact: true }).locator('..')
+  ).toContainText('1.0 MiB');
+  expect(
+    await page.locator('.capacity-values > div > span').allTextContents()
+  ).toEqual(['可用空间', '总容量', '媒体目录大小', '预警阈值', '停止写入阈值']);
   await expect(page.getByLabel('图片存储目录')).toHaveValue(
     '/srv/pixivarchive/media'
   );
@@ -694,6 +700,51 @@ test('storage and maintenance expose protection thresholds and capabilities', as
 
   await page.getByRole('button', { name: '扫描到期作品' }).click();
   await expect(page.getByText('当前没有符合条件的项目')).toBeVisible();
+});
+
+test('media usage failure keeps filesystem capacity values visible', async ({
+  page
+}) => {
+  await mockSystem(page, { storageUsageUnavailable: true });
+  await page.goto('/system/settings');
+
+  await expect(
+    page.getByText('可用空间', { exact: true }).locator('..')
+  ).not.toContainText('—');
+  await expect(
+    page.getByText('总容量', { exact: true }).locator('..')
+  ).not.toContainText('—');
+  await expect(
+    page.getByText('媒体目录大小', { exact: true }).locator('..')
+  ).toContainText('—');
+});
+
+test('filesystem capacity appears while media usage is still loading', async ({
+  page
+}) => {
+  await mockSystem(page);
+  let releaseUsage: (() => void) | undefined;
+  const usageReady = new Promise<void>((resolve) => {
+    releaseUsage = resolve;
+  });
+  await page.unroute('**/api/system/storage-usage');
+  await page.route('**/api/system/storage-usage', async (route) => {
+    await usageReady;
+    await fulfillJson(route, 200, { media_directory_bytes: 1_048_576 });
+  });
+
+  await page.goto('/system/settings');
+  await expect(
+    page.getByText('可用空间', { exact: true }).locator('..')
+  ).not.toContainText('—');
+  await expect(
+    page.getByText('媒体目录大小', { exact: true }).locator('..')
+  ).toContainText('—');
+
+  releaseUsage!();
+  await expect(
+    page.getByText('媒体目录大小', { exact: true }).locator('..')
+  ).toContainText('1.0 MiB');
 });
 
 test('system settings save queue quotas without exposing task priorities', async ({
@@ -850,6 +901,59 @@ test('about page exposes the application version and source repository', async (
   await expect(page.getByText('源码仓库', { exact: true })).toHaveCount(0);
 });
 
+test('about page keeps a single line placeholder until the version is loaded', async ({
+  page
+}) => {
+  await mockSystem(page);
+  let releaseStatus: (() => void) | undefined;
+  const statusReady = new Promise<void>((resolve) => {
+    releaseStatus = resolve;
+  });
+  await page.unroute('**/api/system/status');
+  await page.route('**/api/system/status', async (route) => {
+    await statusReady;
+    await fulfillJson(route, 200, {
+      version: '0.1.0',
+      git_commit: 'test',
+      migration_version: 1,
+      database: { status: 'healthy', message: null },
+      media: { status: 'healthy', message: null },
+      worker: { status: 'healthy', message: null },
+      queue: {},
+      setting_revisions: {},
+      storage: {
+        active_media_root: '/srv/media',
+        total_bytes: 100,
+        available_bytes: 50,
+        warning_threshold_bytes: 10,
+        write_stop_threshold_bytes: 5,
+        write_stopped: false
+      },
+      capabilities: {
+        webp_derivatives: true,
+        avif_derivatives: false,
+        reflink: false
+      }
+    });
+  });
+
+  await page.goto('/system/about');
+  const versionRow = page.getByText('版本', { exact: true }).locator('..');
+  const placeholder = versionRow.getByLabel('正在读取版本');
+  await expect(placeholder).toHaveText('');
+  await expect(placeholder).toHaveCSS('height', '1px');
+  expect(
+    await placeholder.evaluate(
+      (element) => element.getBoundingClientRect().width
+    )
+  ).toBeGreaterThan(40);
+  await expect(versionRow.getByText('v0.1.0')).toHaveCount(0);
+
+  releaseStatus!();
+  await expect(versionRow.getByText('v0.1.0')).toBeVisible();
+  await expect(versionRow.getByLabel('正在读取版本')).toHaveCount(0);
+});
+
 test('about page spaces version metadata evenly', async ({ page }) => {
   await mockSystem(page);
   await page.goto('/system/about');
@@ -905,6 +1009,7 @@ interface SystemMockState {
 
 interface SystemMockOptions {
   statusUnavailable?: boolean;
+  storageUsageUnavailable?: boolean;
 }
 
 function favoriteState(enabled: boolean, revision: number) {
@@ -1076,6 +1181,14 @@ async function mockSystem(
 
   await page.route('**/api/system/settings', async (route) => {
     await fulfillJson(route, 200, { value: settings() });
+  });
+
+  await page.route('**/api/system/storage-usage', async (route) => {
+    if (options.storageUsageUnavailable) {
+      await fulfillJson(route, 503, { error: 'unavailable' });
+      return;
+    }
+    await fulfillJson(route, 200, { media_directory_bytes: 1_048_576 });
   });
 
   await page.route('**/api/system/settings/*', async (route) => {

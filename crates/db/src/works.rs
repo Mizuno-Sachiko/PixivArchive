@@ -10,7 +10,7 @@ mod metadata;
 mod model;
 mod trash;
 
-pub use model::SavePixivWorkMetadata;
+pub use model::{SavePixivWorkMetadata, WorkRevisionSourceInput};
 pub(crate) use trash::{
     load_trash_action_capabilities, trash_selection_ctes, validated_trash_batch_ids,
 };

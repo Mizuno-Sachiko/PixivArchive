@@ -99,6 +99,19 @@ assert_no_database_tool_calls() {
   grep -q 'dropdb .*pixivarchive_test_' "$LOG_FILE"
 }
 
+@test "test-db uses the configured cluster port while PostgreSQL is stopped" {
+  cat >"$BIN_DIR/pg_lsclusters" <<'SH'
+#!/usr/bin/env bash
+echo "17 main 15001 down postgres /var/lib/postgresql/17/main /var/log/postgresql/postgresql-17-main.log"
+SH
+  chmod +x "$BIN_DIR/pg_lsclusters"
+
+  run bash scripts/test-db.sh -- bash -c 'printf "%s\n" "$DATABASE_URL" >"$TEST_ROOT/child-url"'
+
+  [ "$status" -eq 0 ]
+  grep -q '^postgres://pixivarchive_test:pixivarchive_test@127.0.0.1:15001/pixivarchive_test_' "$TEST_ROOT/child-url"
+}
+
 @test "test-db applies migrations before the child command when requested" {
   run bash scripts/test-db.sh --migrate -- bash -c 'test -s "$TEST_ROOT/migrated-url"'
 

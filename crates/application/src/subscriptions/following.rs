@@ -35,18 +35,19 @@ where
             });
         }
         let full = unit.cursor_kind == "backfill";
-        let last_page = cursor_page(unit.cursor_snapshot.as_ref(), 1)?;
-        let first_page = if full {
-            1
+        let page_limit = if full {
+            None
         } else {
-            last_page
-                .saturating_sub(subscription_schedule(&unit.schedule)?.lookback_pages)
-                .max(1)
+            Some(
+                subscription_schedule(&unit.schedule)?
+                    .lookback_pages
+                    .saturating_add(1),
+            )
         };
         let mode = enum_field::<PixivFollowLatestMode>(&unit.params_snapshot, "mode")?;
         let mut items = Vec::new();
-        let mut page = first_page;
-        let next_cursor = loop {
+        let mut page = 1;
+        loop {
             let response = self
                 .gateway
                 .follow_latest(
@@ -70,19 +71,18 @@ where
                     pixiv_error_class(error.class())
                 })?;
             items.extend(response.value.items);
-            let next_cursor = response.value.next_cursor;
-            if !full && page >= last_page {
-                break next_cursor;
+            if page_limit.is_some_and(|limit| page >= limit) {
+                break;
             }
-            let Some(cursor) = next_cursor else {
-                break None;
+            let Some(cursor) = response.value.next_cursor else {
+                break;
             };
             if cursor.page <= page {
                 return Err(JobErrorClass::Permanent);
             }
             page = cursor.page;
-        };
-        let mut saved = self
+        }
+        let saved = self
             .save_discovery_items(
                 ownership,
                 context,
@@ -105,9 +105,6 @@ where
             }
         }
         .map_err(|error| database_error_class(&error))?;
-        saved.cursor_value = next_cursor
-            .map(|cursor| serde_json::to_value(cursor).map_err(|_| JobErrorClass::Permanent))
-            .transpose()?;
         Ok(saved)
     }
 }

@@ -34,7 +34,8 @@ export class GalleryQueryStore {
   tagScope = $state<'original' | 'original_and_translation'>(
     'original_and_translation'
   );
-  minimumBookmarks = $state<number | null>(null);
+  minimumBookmarks = $state<number | null | undefined>(null);
+  maximumBookmarks = $state<number | null | undefined>(null);
   workKinds = $state<string[]>([]);
   ageRatings = $state<string[]>([]);
   aiGenerated = $state<'any' | 'yes' | 'no'>('any');
@@ -46,9 +47,29 @@ export class GalleryQueryStore {
     this.tagOperator = 'any';
     this.tagScope = 'original_and_translation';
     this.minimumBookmarks = null;
+    this.maximumBookmarks = null;
     this.workKinds = [];
     this.ageRatings = [];
     this.aiGenerated = 'any';
+  }
+
+  get validationError(): string {
+    const bounds = [this.minimumBookmarks, this.maximumBookmarks].filter(
+      (value): value is number => value !== null && value !== undefined
+    );
+    if (bounds.some((value) => !Number.isSafeInteger(value) || value < 0)) {
+      return '收藏数需要填写非负整数';
+    }
+    if (
+      this.minimumBookmarks !== null &&
+      this.minimumBookmarks !== undefined &&
+      this.maximumBookmarks !== null &&
+      this.maximumBookmarks !== undefined &&
+      this.minimumBookmarks > this.maximumBookmarks
+    ) {
+      return '收藏数下限不能大于上限';
+    }
+    return '';
   }
 
   build(): GallerySearch {
@@ -64,14 +85,31 @@ export class GalleryQueryStore {
         scope: this.tagScope
       });
     }
-    if (this.minimumBookmarks !== null) {
+    const minimumBookmarks = this.minimumBookmarks ?? null;
+    const maximumBookmarks = this.maximumBookmarks ?? null;
+    let bookmarkComparison:
+      Extract<GalleryFilter, { type: 'number' }>['comparison'] | null = null;
+    if (minimumBookmarks !== null && maximumBookmarks !== null) {
+      bookmarkComparison = {
+        operator: 'between',
+        value: { min: minimumBookmarks, max: maximumBookmarks }
+      };
+    } else if (minimumBookmarks !== null) {
+      bookmarkComparison = {
+        operator: 'greater_than_or_equal',
+        value: minimumBookmarks
+      };
+    } else if (maximumBookmarks !== null) {
+      bookmarkComparison = {
+        operator: 'less_than_or_equal',
+        value: maximumBookmarks
+      };
+    }
+    if (bookmarkComparison) {
       filters.push({
         type: 'number',
         field: 'bookmark_count',
-        comparison: {
-          operator: 'greater_than_or_equal',
-          value: this.minimumBookmarks
-        }
+        comparison: bookmarkComparison
       });
     }
     if (this.workKinds.length > 0) {

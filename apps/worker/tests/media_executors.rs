@@ -143,6 +143,7 @@ async fn worker_downloads_validates_and_derives_static_pixiv_media() {
             },
             ugoira: None,
             provenance: serde_json::json!({"test": true}),
+            revision_source: None,
         })
         .await
         .unwrap();
@@ -273,6 +274,7 @@ async fn worker_waits_for_storage_before_requesting_source_media() {
             },
             ugoira: None,
             provenance: serde_json::json!({"test": true}),
+            revision_source: None,
         })
         .await
         .unwrap();
@@ -333,6 +335,7 @@ async fn worker_waits_for_storage_before_generating_a_derivative() {
             },
             ugoira: None,
             provenance: serde_json::json!({"test": true}),
+            revision_source: None,
         })
         .await
         .unwrap();
@@ -431,6 +434,7 @@ async fn worker_preserves_ugoira_zip_and_uses_its_first_frame_for_processing() {
             },
             ugoira: Some(manifest),
             provenance: serde_json::json!({"test": true}),
+            revision_source: None,
         })
         .await
         .unwrap();

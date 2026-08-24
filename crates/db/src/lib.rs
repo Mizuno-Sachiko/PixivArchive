@@ -49,13 +49,14 @@ pub use subscriptions::{
     CreateSubscription, DueSubscription, FinishSubscriptionRun, FinishSubscriptionRunResult,
     FinishSubscriptionRunUnit, FinishSubscriptionRunUnitResult, RecordRankingUnitEntry,
     ScheduleDueSubscription, ScheduleDueSubscriptionResult, ScheduledSubscriptionRun,
-    SubscriptionCursorRecord, SubscriptionRecord, SubscriptionRepository, SubscriptionRunRecord,
-    SubscriptionRunSummaryRecord, SubscriptionRunUnitRecord, UpdateSubscription,
+    SubscriptionCursorRecord, SubscriptionCursorUpdate, SubscriptionRecord, SubscriptionRepository,
+    SubscriptionRunRecord, SubscriptionRunSummaryRecord, SubscriptionRunUnitRecord,
+    UpdateSubscription,
 };
 pub use system::{SystemDatabaseStatus, SystemRepository};
 pub use trash::{TrashPurgeFailure, TrashPurgePlan, TrashRepository};
 pub use worker::{WorkerHeartbeatRecord, WorkerHeartbeatRepository, WorkerHeartbeatUpdate};
-pub use works::{SavePixivWorkMetadata, WorkRepository};
+pub use works::{SavePixivWorkMetadata, WorkRepository, WorkRevisionSourceInput};
 
 #[derive(Clone)]
 pub struct Db {

@@ -802,6 +802,97 @@ test('page thumbnails and wheel change the detail page without opening the viewe
   ).toBeVisible();
 });
 
+test('page strip follows the active thumbnail only when it reaches an edge', async ({
+  page
+}) => {
+  await mockViewerApi(page, { kind: 'illustration' });
+  await page.goto('/gallery/works/1002');
+
+  const strip = page.locator('.page-strip');
+  const preview = page.locator('.source-preview');
+  const secondPage = page.getByRole('button', { name: '查看第2页' });
+  const documentScroll = await page.evaluate(() => window.scrollY);
+  await strip.evaluate((element) => {
+    const target = element as HTMLElement;
+    target.style.width = '150px';
+    target.style.paddingRight = '100px';
+    target.scrollLeft = 20;
+  });
+  await preview.hover();
+  await page.mouse.wheel(0, 180);
+  await expect(secondPage).toHaveAttribute('aria-pressed', 'true');
+  await expect
+    .poll(() =>
+      strip.evaluate((element) => (element as HTMLElement).scrollLeft)
+    )
+    .toBe(20);
+
+  await page.mouse.wheel(0, -180);
+  await expect
+    .poll(() =>
+      strip.evaluate((element) => (element as HTMLElement).scrollLeft)
+    )
+    .toBe(0);
+  await strip.evaluate((element) => {
+    const target = element as HTMLElement;
+    target.style.width = '80px';
+    target.style.paddingRight = '0';
+  });
+  const rightOverflow = await strip.evaluate((element) => {
+    const stripBounds = element.getBoundingClientRect();
+    const second = element.querySelector<HTMLElement>('[data-page-index="1"]');
+    return second!.getBoundingClientRect().right - stripBounds.right;
+  });
+
+  await page.mouse.wheel(0, 180);
+  await expect(secondPage).toHaveAttribute('aria-pressed', 'true');
+  await expect
+    .poll(() =>
+      strip.evaluate((element) => (element as HTMLElement).scrollLeft)
+    )
+    .toBeGreaterThan(0);
+  const afterRight = await strip.evaluate((element) => {
+    const stripBounds = element.getBoundingClientRect();
+    const active = element.querySelector<HTMLElement>('[aria-pressed="true"]');
+    const activeBounds = active!.getBoundingClientRect();
+    return {
+      scrollLeft: (element as HTMLElement).scrollLeft,
+      stripLeft: stripBounds.left,
+      stripRight: stripBounds.right,
+      activeLeft: activeBounds.left,
+      activeRight: activeBounds.right
+    };
+  });
+  expect(Math.abs(afterRight.scrollLeft - rightOverflow)).toBeLessThanOrEqual(
+    1
+  );
+  expect(afterRight.activeLeft).toBeGreaterThanOrEqual(
+    afterRight.stripLeft - 1
+  );
+  expect(afterRight.activeRight).toBeLessThanOrEqual(afterRight.stripRight + 1);
+
+  await page.mouse.wheel(0, -180);
+  await expect
+    .poll(() =>
+      strip.evaluate((element) => (element as HTMLElement).scrollLeft)
+    )
+    .toBe(0);
+  const afterLeft = await strip.evaluate((element) => {
+    const stripBounds = element.getBoundingClientRect();
+    const active = element.querySelector<HTMLElement>('[aria-pressed="true"]');
+    const activeBounds = active!.getBoundingClientRect();
+    return {
+      stripLeft: stripBounds.left,
+      stripRight: stripBounds.right,
+      activeLeft: activeBounds.left,
+      activeRight: activeBounds.right
+    };
+  });
+  expect(afterLeft.activeLeft).toBeGreaterThanOrEqual(afterLeft.stripLeft - 1);
+  expect(afterLeft.activeRight).toBeLessThanOrEqual(afterLeft.stripRight + 1);
+  expect(await page.evaluate(() => window.scrollY)).toBe(documentScroll);
+});
+
 test('work descriptions keep readable safe Pixiv content', async ({ page }) => {
   await mockViewerApi(page, {
     kind: 'illustration',
@@ -827,7 +918,12 @@ test('work detail formats timestamps in the browser timezone', async ({
   const context = await browser.newContext({ timezoneId: 'America/New_York' });
   const page = await context.newPage();
   try {
-    await mockViewerApi(page, { kind: 'illustration' });
+    await mockViewerApi(page, {
+      kind: 'illustration',
+      revisionPageCount: 42,
+      revisionSourceName: '关注动态',
+      revisionSourceAccountId: 810004
+    });
     await page.goto('/gallery/works/1002');
 
     const publishedTime = page.locator('.published-time time');
@@ -836,9 +932,58 @@ test('work detail formats timestamps in the browser timezone', async ({
     const revisionTime = page.locator('.revision-list time');
     await expect(revisionTime).toContainText('2026年7月30日 08:00:00');
     await expect(revisionTime).toHaveAttribute('title', /2026/);
+    const source = page.locator('.revision-source');
+    const meta = page.locator('.revision-meta');
+    await expect(meta).toHaveText('42页 · illustration');
+    await expect(source).toContainText('来自：关注动态 · 账户810004');
+    const [revisionTimeBox, metaBox, sourceBox] = await Promise.all([
+      page.locator('.revision-time').boundingBox(),
+      meta.boundingBox(),
+      source.boundingBox()
+    ]);
+    expect(revisionTimeBox).not.toBeNull();
+    expect(metaBox).not.toBeNull();
+    expect(sourceBox).not.toBeNull();
+    expect(
+      Math.abs(
+        revisionTimeBox!.x +
+          revisionTimeBox!.width -
+          (sourceBox!.x + sourceBox!.width)
+      )
+    ).toBeLessThanOrEqual(1);
+    expect(Math.abs(metaBox!.y - sourceBox!.y)).toBeLessThanOrEqual(1);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth
+      )
+    ).toBe(true);
   } finally {
     await context.close();
   }
+});
+
+test('long revision sources wrap without horizontal overflow', async ({
+  page
+}) => {
+  await mockViewerApi(page, { kind: 'illustration' });
+  await page.goto('/gallery/works/1002');
+
+  const details = page.locator('.revision-details');
+  await details.evaluate((element) => {
+    (element as HTMLElement).style.width = '240px';
+  });
+  const [metaBox, sourceBox] = await Promise.all([
+    details.locator('.revision-meta').boundingBox(),
+    details.locator('.revision-source').boundingBox()
+  ]);
+  expect(metaBox).not.toBeNull();
+  expect(sourceBox).not.toBeNull();
+  expect(sourceBox!.y).toBeGreaterThan(metaBox!.y);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
 });
 
 test('Ugoira uses the same viewer shell with autoplay and one play control', async ({
@@ -904,6 +1049,9 @@ interface ViewerMockOptions {
   maskNonAllAgeThumbnails?: boolean;
   secondThumbnailAvailable?: boolean;
   collectionState?: 'collected' | 'metadata_only' | 'trash';
+  revisionPageCount?: number;
+  revisionSourceName?: string;
+  revisionSourceAccountId?: number;
 }
 
 async function mockViewerApi(
@@ -915,7 +1063,10 @@ async function mockViewerApi(
     ageRating = 'all_age',
     maskNonAllAgeThumbnails = false,
     secondThumbnailAvailable = true,
-    collectionState = 'collected'
+    collectionState = 'collected',
+    revisionPageCount = 1,
+    revisionSourceName = '首页精选与长期收藏同步来源名称很长',
+    revisionSourceAccountId = 2002
   }: ViewerMockOptions
 ): Promise<{
   setCollectionState: (
@@ -1036,8 +1187,14 @@ async function mockViewerApi(
           title: '蓝色花束',
           description: null,
           work_kind: kind,
-          page_count: 1,
-          captured_at: '2026-07-30T12:00:00Z'
+          page_count: revisionPageCount,
+          captured_at: '2026-07-30T12:00:00Z',
+          sources: [
+            {
+              subscription_name: revisionSourceName,
+              pixiv_user_id: revisionSourceAccountId
+            }
+          ]
         }
       ])
     })

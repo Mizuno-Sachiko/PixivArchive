@@ -315,11 +315,11 @@ impl From<SystemError> for ApiError {
             SystemError::MediaNotFound => Self::not_found("Media was not found"),
             SystemError::MediaRootUnavailable => Self::service_unavailable(),
             SystemError::Filesystem(error) => {
-                tracing::error!(error = %error, "Media storage capacity could not be read");
+                tracing::error!(error = %error, "Media storage could not be read");
                 Self::new(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "media_storage_unavailable",
-                    "Media storage capacity could not be read",
+                    "Media storage could not be read",
                 )
             }
             SystemError::Storage(_) | SystemError::Settings(_) => Self::service_unavailable(),

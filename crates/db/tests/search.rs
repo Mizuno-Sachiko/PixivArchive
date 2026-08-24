@@ -1650,6 +1650,7 @@ async fn seed_work(
             },
             ugoira: None,
             provenance: json!({"test": true}),
+            revision_source: None,
         })
         .await
         .unwrap();

@@ -64,14 +64,30 @@
           ]}
         />
       </Field>
-      <Field label="最低收藏数">
-        <input
-          type="number"
-          min="0"
-          step="1"
-          bind:value={query.minimumBookmarks}
-          placeholder="不限制"
-        />
+      <Field label="收藏数">
+        <div class="bookmark-range">
+          <input
+            type="number"
+            min="0"
+            step="1"
+            bind:value={query.minimumBookmarks}
+            placeholder="不限制"
+            aria-label="最低收藏数"
+          />
+          <span aria-hidden="true">—</span>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            bind:value={query.maximumBookmarks}
+            placeholder="不限制"
+            aria-label="最高收藏数"
+          />
+        </div>
+        {#if query.validationError}
+          <small class="range-error" role="alert">{query.validationError}</small
+          >
+        {/if}
       </Field>
 
       <CheckboxFilterGroup
@@ -112,6 +128,7 @@
       <Button onclick={() => query.reset()}>清空条件</Button>
       <Button
         variant="primary"
+        disabled={Boolean(query.validationError)}
         onclick={() => {
           onApply();
           onClose();
@@ -177,6 +194,27 @@
     gap: 1rem;
     padding: 1.1rem;
     overflow-y: auto;
+  }
+
+  .bookmark-range {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  .bookmark-range span {
+    color: var(--color-text-3);
+  }
+
+  .bookmark-range input {
+    min-width: 0;
+  }
+
+  .range-error {
+    color: var(--color-error);
+    font-size: 0.7rem;
+    line-height: 1.4;
   }
 
   footer {

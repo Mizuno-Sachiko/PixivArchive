@@ -12,10 +12,14 @@ use pixivarchive_media::MediaRoot;
 use serde::Serialize;
 use std::{
     collections::BTreeMap,
+    io,
     path::{Path, PathBuf},
+    sync::Arc,
+    time::{Duration as StdDuration, Instant},
 };
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
+use tokio::sync::{Mutex as AsyncMutex, oneshot};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -26,6 +30,7 @@ pub struct SystemService {
     version: String,
     git_commit: Option<String>,
     capabilities: SystemCapabilities,
+    media_usage_tracker: MediaUsageTracker,
 }
 
 impl SystemService {
@@ -42,6 +47,7 @@ impl SystemService {
             version: version.into(),
             git_commit,
             capabilities: SystemCapabilities::default(),
+            media_usage_tracker: MediaUsageTracker::default(),
         }
     }
 
@@ -121,6 +127,121 @@ impl SystemService {
                 .collect(),
         };
         Ok(MaintenanceAccepted { operation, job_ids })
+    }
+
+    pub async fn media_usage(&self) -> Result<MediaUsage, SystemError> {
+        let root = self.media_root.clone();
+        let bytes = self
+            .media_usage_tracker
+            .measure(move || media_directory_size(&root))
+            .await
+            .map_err(SystemError::Filesystem)?;
+        Ok(MediaUsage {
+            media_directory_bytes: bytes,
+        })
+    }
+}
+
+const MEDIA_USAGE_CACHE_TTL: StdDuration = StdDuration::from_secs(15);
+
+#[derive(Clone, Copy, Debug)]
+struct MediaUsageCache {
+    bytes: u64,
+    measured_at: Instant,
+}
+
+#[derive(Clone, Default)]
+struct MediaUsageTracker {
+    state: Arc<AsyncMutex<MediaUsageState>>,
+}
+
+#[derive(Default)]
+struct MediaUsageState {
+    cache: Option<MediaUsageCache>,
+    scan_running: bool,
+    waiters: Vec<oneshot::Sender<SharedMediaUsageResult>>,
+}
+
+type SharedMediaUsageResult = Result<u64, MediaUsageFailure>;
+
+#[derive(Clone, Debug)]
+struct MediaUsageFailure {
+    kind: io::ErrorKind,
+    message: String,
+}
+
+impl MediaUsageFailure {
+    fn into_error(self) -> io::Error {
+        io::Error::new(self.kind, self.message)
+    }
+}
+
+impl From<io::Error> for MediaUsageFailure {
+    fn from(error: io::Error) -> Self {
+        Self {
+            kind: error.kind(),
+            message: error.to_string(),
+        }
+    }
+}
+
+impl MediaUsageTracker {
+    async fn measure<F>(&self, scan: F) -> Result<u64, io::Error>
+    where
+        F: FnOnce() -> Result<u64, io::Error> + Send + 'static,
+    {
+        let receiver = {
+            let mut state = self.state.lock().await;
+            if let Some(cached) = state.cache
+                && cached.measured_at.elapsed() < MEDIA_USAGE_CACHE_TTL
+            {
+                return Ok(cached.bytes);
+            }
+
+            let (sender, receiver) = oneshot::channel();
+            state.waiters.push(sender);
+            if !state.scan_running {
+                state.scan_running = true;
+                let tracker = self.clone();
+                // The tracker owns the scan so a cancelled caller cannot discard its result.
+                tokio::spawn(async move {
+                    let result = match tokio::task::spawn_blocking(scan).await {
+                        Ok(result) => result,
+                        Err(error) => Err(io::Error::other(error)),
+                    }
+                    .map_err(MediaUsageFailure::from);
+                    tracker.finish_scan(result).await;
+                });
+            }
+            receiver
+        };
+
+        receiver
+            .await
+            .map_err(|_| io::Error::other("media usage scan ended without a result"))?
+            .map_err(MediaUsageFailure::into_error)
+    }
+
+    async fn finish_scan(&self, result: SharedMediaUsageResult) {
+        let waiters = {
+            let mut state = self.state.lock().await;
+            state.scan_running = false;
+            if let Ok(bytes) = &result {
+                state.cache = Some(MediaUsageCache {
+                    bytes: *bytes,
+                    measured_at: Instant::now(),
+                });
+            }
+            std::mem::take(&mut state.waiters)
+        };
+        for waiter in waiters {
+            let _ = waiter.send(result.clone());
+        }
+    }
+
+    #[cfg(test)]
+    async fn pending_request_count(&self) -> usize {
+        self.state.lock().await.waiters.len()
     }
 }
 
@@ -252,6 +373,11 @@ pub struct StorageStatus {
     pub write_stopped: bool,
 }
 
+#[derive(Clone, Copy, Debug, Serialize)]
+pub struct MediaUsage {
+    pub media_directory_bytes: u64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub enum MaintenanceOperation {
     RegenerateDerivatives,
@@ -301,6 +427,34 @@ pub struct StorageCapacity {
     pub available_bytes: u64,
 }
 
+fn media_directory_size(root: &Path) -> Result<u64, std::io::Error> {
+    let metadata = std::fs::symlink_metadata(root)?;
+    if !metadata.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotADirectory,
+            "media root is not a directory",
+        ));
+    }
+
+    let mut total = 0_u64;
+    let mut directories = vec![root.to_owned()];
+    while let Some(directory) = directories.pop() {
+        for entry in std::fs::read_dir(directory)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() {
+                directories.push(entry.path());
+            } else if file_type.is_file() {
+                total = total.saturating_add(entry.metadata()?.len());
+            }
+        }
+    }
+    Ok(total)
+}
+
 #[cfg(unix)]
 pub async fn storage_capacity(root: &Path) -> Result<StorageCapacity, std::io::Error> {
     use std::{ffi::CString, os::unix::ffi::OsStrExt};
@@ -342,6 +496,11 @@ pub async fn storage_capacity(_root: &Path) -> Result<StorageCapacity, std::io::
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    };
 
     #[tokio::test]
     async fn media_status_describes_a_non_directory_path() {
@@ -353,5 +512,88 @@ mod tests {
         tokio::fs::remove_file(path).await.unwrap();
         assert_eq!(status.status, "unavailable");
         assert_eq!(status.message.as_deref(), Some("配置的媒体路径不是目录"));
+    }
+
+    #[test]
+    fn media_directory_size_counts_nested_regular_files() {
+        let root = std::env::temp_dir().join(format!("pixivarchive-media-{}", Uuid::now_v7()));
+        std::fs::create_dir_all(root.join("nested")).unwrap();
+        std::fs::write(root.join("root.bin"), [0_u8; 3]).unwrap();
+        std::fs::write(root.join("nested/child.bin"), [0_u8; 5]).unwrap();
+
+        let size = media_directory_size(&root).unwrap();
+
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_eq!(size, 8);
+    }
+
+    #[tokio::test]
+    async fn media_usage_scan_survives_a_cancelled_request_and_populates_the_cache() {
+        let tracker = MediaUsageTracker::default();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let first_tracker = tracker.clone();
+        let first = tokio::spawn(async move {
+            first_tracker
+                .measure(move || {
+                    let _ = started_tx.send(());
+                    release_rx.recv().unwrap();
+                    Ok(17)
+                })
+                .await
+        });
+        started_rx.await.unwrap();
+        first.abort();
+        assert!(first.await.unwrap_err().is_cancelled());
+
+        let redundant_scans = Arc::new(AtomicUsize::new(0));
+        let second_counter = Arc::clone(&redundant_scans);
+        let second_tracker = tracker.clone();
+        let second = tokio::spawn(async move {
+            second_tracker
+                .measure(move || {
+                    second_counter.fetch_add(1, Ordering::SeqCst);
+                    Ok(99)
+                })
+                .await
+        });
+        tokio::time::timeout(StdDuration::from_secs(1), async {
+            while tracker.pending_request_count().await < 2 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        release_tx.send(()).unwrap();
+
+        assert_eq!(second.await.unwrap().unwrap(), 17);
+        assert_eq!(redundant_scans.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            tracker
+                .measure(|| panic!("a fresh scan should not replace the cached result"))
+                .await
+                .unwrap(),
+            17
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn media_directory_size_skips_symbolic_links() {
+        use std::os::unix::fs::symlink;
+
+        let root = std::env::temp_dir().join(format!("pixivarchive-media-{}", Uuid::now_v7()));
+        let external = root.with_extension("external");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&external).unwrap();
+        std::fs::write(root.join("inside.bin"), [0_u8; 3]).unwrap();
+        std::fs::write(external.join("outside.bin"), [0_u8; 9]).unwrap();
+        symlink(external.join("outside.bin"), root.join("linked.bin")).unwrap();
+
+        let size = media_directory_size(&root).unwrap();
+
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir_all(&external).unwrap();
+        assert_eq!(size, 3);
     }
 }

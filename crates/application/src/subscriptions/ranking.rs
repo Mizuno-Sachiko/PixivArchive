@@ -28,6 +28,7 @@ where
         let mut ignored = 0;
         let rule_document = unit_rule_document(unit)?;
         let account_id = unit.pixiv_account_id;
+        let revision_source = collection_source_context(unit);
         for period_index in 0..period_count {
             if period_index > 0 {
                 let Some(previous_date) = oldest_date.and_then(Date::previous_day) else {
@@ -75,6 +76,7 @@ where
                             ranking_rank: Some(entry.rank),
                             ranking_date: period_date.map(ranking_date_time),
                         },
+                        revision_source: Some(revision_source.clone()),
                         download_priority: ownership.download_priority(),
                     };
                     let processed = match ownership {

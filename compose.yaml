@@ -10,7 +10,7 @@ x-application-environment: &application-environment
   NO_PROXY: ${NO_PROXY:-127.0.0.1,localhost,postgres}
 
 x-application: &application
-  image: ghcr.io/mizuno-sachiko/pixivarchive:0.1.0
+  image: ghcr.io/mizuno-sachiko/pixivarchive:0.2.0
   pull_policy: missing
   restart: unless-stopped
   environment: *application-environment

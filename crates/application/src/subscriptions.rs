@@ -17,13 +17,13 @@ use crate::jobs::{database_error_class, pixiv_error_class};
 use crate::{
     following::{FollowingService, FollowingServiceError},
     pixiv_works::{
-        DeletionMarkerPolicy, PixivWorkProcessor, ProcessPixivWork, ProcessedPixivWork,
-        WorkDiscoveryContext,
+        CollectionSourceContext, DeletionMarkerPolicy, PixivWorkProcessor, ProcessPixivWork,
+        ProcessedPixivWork, WorkDiscoveryContext,
     },
 };
 use pixivarchive_db::{
     BookmarkRepository, Db, DbError, FinishSubscriptionRunUnit, PixivBookmarkSyncEntry,
-    SubscriptionRepository,
+    SubscriptionCursorUpdate, SubscriptionRepository,
 };
 use pixivarchive_domain::{
     job::{JobErrorClass, JobLease, JobPriority},
@@ -120,17 +120,6 @@ impl UnitExecutionOwnership {
     }
 }
 
-fn cursor_page(cursor: Option<&Value>, default_page: u32) -> Result<u32, JobErrorClass> {
-    let Some(cursor) = cursor else {
-        return Ok(default_page);
-    };
-    cursor
-        .get("page")
-        .and_then(Value::as_u64)
-        .and_then(|page| u32::try_from(page).ok())
-        .ok_or(JobErrorClass::Permanent)
-}
-
 fn ranking_cursor_date(cursor: Option<&Value>) -> Option<Date> {
     cursor
         .and_then(|value| value.get("date"))
@@ -202,6 +191,17 @@ fn unit_rule_document(
         .map(RuleDefinitionV1::parse)
         .transpose()
         .map_err(|_| JobErrorClass::Permanent)
+}
+
+fn collection_source_context(
+    unit: &pixivarchive_db::SubscriptionRunUnitRecord,
+) -> CollectionSourceContext {
+    CollectionSourceContext {
+        subscription_id: unit.subscription_id,
+        subscription_run_id: unit.subscription_run_id,
+        subscription_name: unit.subscription_name.clone(),
+        pixiv_user_id: unit.pixiv_user_id,
+    }
 }
 
 #[cfg(test)]

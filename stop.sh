@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  echo "usage: stop.sh"
+}
+
+if [ "$#" -gt 0 ]; then
+  if [ "$#" -eq 1 ] && { [ "$1" = "-h" ] || [ "$1" = "--help" ]; }; then
+    usage
+    exit 0
+  fi
+  usage >&2
+  exit 2
+fi
+
 install_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 runtime_dir="$install_root/.runtime"
 
@@ -21,7 +34,7 @@ stop_process() {
   local pid_file="$runtime_dir/$service.pid"
   local executable="$install_root/bin/pixivarchive-$service"
   if [ ! -f "$pid_file" ]; then
-    printf 'PixivArchive %s is not running\n' "$name"
+    printf 'PixivArchive: %s is not running\n' "$name"
     return
   fi
 
@@ -33,7 +46,7 @@ stop_process() {
   fi
   if ! kill -0 "$pid" 2>/dev/null; then
     rm -f "$pid_file"
-    printf 'PixivArchive %s is not running\n' "$name"
+    printf 'PixivArchive: %s is not running\n' "$name"
     return
   fi
   if ! process_matches "$pid" "$executable"; then
@@ -41,18 +54,28 @@ stop_process() {
     return 1
   fi
 
+  printf 'PixivArchive: stopping %s (PID %s)\n' "$name" "$pid"
   kill -TERM "$pid"
-  for _ in $(seq 1 300); do
+  local attempt
+  for attempt in $(seq 0 300); do
     if ! kill -0 "$pid" 2>/dev/null; then
       rm -f "$pid_file"
-      printf 'PixivArchive %s stopped\n' "$name"
+      printf 'PixivArchive: %s stopped after %d.%d seconds\n' \
+        "$name" "$((attempt / 10))" "$((attempt % 10))"
       return
+    fi
+    if [ "$attempt" -eq 50 ]; then
+      printf 'PixivArchive: %s is still shutting down\n' "$name"
+    fi
+    if [ "$attempt" -eq 300 ]; then
+      break
     fi
     sleep 0.1
   done
-  echo "PixivArchive $name did not stop within 30 seconds" >&2
+  echo "PixivArchive: $name did not stop within 30 seconds" >&2
   return 1
 }
 
 stop_process Worker worker
 stop_process Web web
+printf 'PixivArchive: all processes stopped\n'

@@ -916,6 +916,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/storage-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["system_storage_usage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks": {
         parameters: {
             query?: never;
@@ -1939,6 +1955,10 @@ export interface components {
         MediaFormat: "jpg" | "png" | "gif" | "zip" | "webp" | "avif";
         /** @enum {string} */
         MediaKind: "source_image" | "ugoira_zip" | "derivative";
+        MediaUsageDto: {
+            /** Format: int64 */
+            media_directory_bytes: number;
+        };
         MoveGalleryContextsToTrashBody: {
             expression: components["schemas"]["GalleryContextSelectionExpression"];
             /** Format: int32 */
@@ -2681,6 +2701,11 @@ export interface components {
             /** Format: uuid */
             work_id: string;
         };
+        WorkRevisionSourceDto: {
+            /** Format: int64 */
+            pixiv_user_id: number;
+            subscription_name: string;
+        };
         WorkRevisionSummaryDto: {
             /** Format: date-time */
             captured_at: string;
@@ -2689,6 +2714,7 @@ export interface components {
             id: string;
             /** Format: int32 */
             page_count: number;
+            sources: components["schemas"]["WorkRevisionSourceDto"][];
             title: string;
             work_kind: components["schemas"]["PixivWorkKind"];
         };
@@ -5237,6 +5263,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemStatusDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    system_storage_usage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaUsageDto"];
                 };
             };
             401: {

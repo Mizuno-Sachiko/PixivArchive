@@ -70,4 +70,21 @@
   .gallery-description-row p {
     margin: 0;
   }
+
+  @media (max-width: 720px) {
+    .gallery-description-row {
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .gallery-description-actions {
+      order: 2;
+      margin-left: auto;
+    }
+
+    .gallery-description-row p {
+      flex: 1 0 100%;
+      order: 1;
+    }
+  }
 </style>

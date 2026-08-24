@@ -6,7 +6,7 @@
     "license": {
       "name": ""
     },
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "paths": {
     "/api/auth/login": {
@@ -3663,6 +3663,46 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SystemStatusDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/storage-usage": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "operationId": "system_storage_usage",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaUsageDto"
                 }
               }
             }
@@ -7511,6 +7551,19 @@
           "derivative"
         ]
       },
+      "MediaUsageDto": {
+        "type": "object",
+        "required": [
+          "media_directory_bytes"
+        ],
+        "properties": {
+          "media_directory_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "MoveGalleryContextsToTrashBody": {
         "type": "object",
         "required": [
@@ -10298,6 +10351,22 @@
           }
         }
       },
+      "WorkRevisionSourceDto": {
+        "type": "object",
+        "required": [
+          "subscription_name",
+          "pixiv_user_id"
+        ],
+        "properties": {
+          "pixiv_user_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "subscription_name": {
+            "type": "string"
+          }
+        }
+      },
       "WorkRevisionSummaryDto": {
         "type": "object",
         "required": [
@@ -10306,7 +10375,8 @@
           "description",
           "work_kind",
           "page_count",
-          "captured_at"
+          "captured_at",
+          "sources"
         ],
         "properties": {
           "captured_at": {
@@ -10327,6 +10397,12 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkRevisionSourceDto"
+            }
           },
           "title": {
             "type": "string"

@@ -1713,6 +1713,216 @@ test('context details share Pixiv actions and author follow uses the verified st
   );
 });
 
+test('bookmark count range is sent from every shared gallery workspace', async ({
+  page
+}) => {
+  await mockApi(page);
+  const searchBodies: Array<{
+    groups: Array<{ mode: string; filters: unknown[] }>;
+  }> = [];
+  await page.route('**/api/gallery/search', async (route) => {
+    searchBodies.push(
+      route.request().postDataJSON() as (typeof searchBodies)[number]
+    );
+    await fulfillJson(route, 200, { items: [], next_cursor: null });
+  });
+  await page.route('**/api/gallery/artists/*', (route) =>
+    fulfillJson(route, 200, {
+      id: ARTIST_ID,
+      pixiv_artist_id: 2001,
+      name: 'Sample Artist',
+      account_name: null,
+      work_count: 12,
+      cover_url: null,
+      cover_width: null,
+      cover_height: null
+    })
+  );
+  await page.route('**/api/following/authors/2001/pixiv*', (route) =>
+    fulfillJson(route, 200, { pixiv_artist_id: 2001, followed: false })
+  );
+  const tagId = '0198f64c-42a2-7374-bace-9f1c3b317fc1';
+  await page.route('**/api/gallery/tags/*', (route) =>
+    fulfillJson(route, 200, {
+      tag: { id: tagId, original: '夜空', translation: null },
+      work_count: 7,
+      cover_url: null,
+      cover_width: null,
+      cover_height: null
+    })
+  );
+  const seriesId = '0198f64c-42a2-7374-bace-9f1c3b317fc2';
+  await page.route('**/api/gallery/series/*', (route) =>
+    fulfillJson(route, 200, {
+      id: seriesId,
+      pixiv_series_id: 31001,
+      pixiv_artist_id: 2001,
+      title: '星空画集',
+      work_count: 4,
+      cover_url: null,
+      cover_width: null,
+      cover_height: null
+    })
+  );
+
+  const contexts: Array<{ url: string; baseFilter?: unknown }> = [
+    { url: '/gallery' },
+    {
+      url: '/gallery/favorites',
+      baseFilter: {
+        type: 'boolean',
+        field: 'bookmarked_by_current_account',
+        value: true
+      }
+    },
+    {
+      url: '/gallery/artists/2001',
+      baseFilter: { type: 'artist_id', value: ARTIST_ID }
+    },
+    {
+      url: '/gallery/tags/%E5%A4%9C%E7%A9%BA',
+      baseFilter: { type: 'tag_id', value: tagId }
+    },
+    {
+      url: '/gallery/series/31001',
+      baseFilter: { type: 'series_id', value: seriesId }
+    }
+  ];
+  const bookmarkFilter = {
+    type: 'number',
+    field: 'bookmark_count',
+    comparison: {
+      operator: 'between',
+      value: { min: 120, max: 480 }
+    }
+  };
+
+  for (const context of contexts) {
+    const beforeNavigation = searchBodies.length;
+    await page.goto(context.url);
+    await expect
+      .poll(() => searchBodies.length)
+      .toBeGreaterThan(beforeNavigation);
+
+    const beforeApply = searchBodies.length;
+    await page.getByRole('button', { name: '筛选条件' }).click();
+    await page.getByLabel('最低收藏数').fill('120');
+    await page.getByLabel('最高收藏数').fill('480');
+    await page.getByRole('button', { name: '应用筛选' }).click();
+    await expect.poll(() => searchBodies.length).toBeGreaterThan(beforeApply);
+
+    const request = searchBodies.at(-1)!;
+    expect(request.groups).toContainEqual({
+      mode: 'all',
+      filters: [bookmarkFilter]
+    });
+    if (context.baseFilter) {
+      expect(request.groups).toContainEqual({
+        mode: 'all',
+        filters: [context.baseFilter]
+      });
+    }
+  }
+});
+
+test('author follow errors stay to the left of the action', async ({
+  page
+}) => {
+  await mockApi(page);
+  await page.route('**/api/gallery/search', (route) =>
+    fulfillJson(route, 200, { items: [], next_cursor: null })
+  );
+  await page.route('**/api/gallery/artists/*', (route) =>
+    fulfillJson(route, 200, {
+      id: ARTIST_ID,
+      pixiv_artist_id: 2001,
+      name: 'Sample Artist',
+      account_name: null,
+      work_count: 12,
+      cover_url: null,
+      cover_width: null,
+      cover_height: null
+    })
+  );
+  await page.route('**/api/following/authors/2001/pixiv*', (route) =>
+    fulfillJson(route, 503, { error: 'unavailable' })
+  );
+
+  await page.goto('/gallery/artists/2001');
+  const action = page.locator('.artist-follow-action');
+  await expect(action.getByRole('alert')).toContainText('关注状态暂时无法读取');
+  const [buttonBox, errorBox] = await Promise.all([
+    action.locator('button').boundingBox(),
+    action.getByRole('alert').boundingBox()
+  ]);
+  expect(buttonBox).not.toBeNull();
+  expect(errorBox).not.toBeNull();
+  expect(errorBox!.x + errorBox!.width).toBeLessThanOrEqual(buttonBox!.x);
+});
+
+test('author follow update errors keep narrow action positions unchanged', async ({
+  page
+}) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await mockApi(page);
+  await page.route('**/api/gallery/search', (route) =>
+    fulfillJson(route, 200, { items: [], next_cursor: null })
+  );
+  await page.route('**/api/gallery/artists/*', (route) =>
+    fulfillJson(route, 200, {
+      id: ARTIST_ID,
+      pixiv_artist_id: 2001,
+      name: 'Sample Artist',
+      account_name: null,
+      work_count: 12,
+      cover_url: null,
+      cover_width: null,
+      cover_height: null
+    })
+  );
+  await page.route('**/api/following/authors/2001/pixiv*', (route) =>
+    route.request().method() === 'PUT'
+      ? fulfillJson(route, 503, { error: 'unavailable' })
+      : fulfillJson(route, 200, { pixiv_artist_id: 2001, followed: false })
+  );
+
+  await page.goto('/gallery/artists/2001');
+  const actions = page.locator('.gallery-description-actions');
+  const followButton = actions.getByRole('button', {
+    name: '关注Sample Artist'
+  });
+  const pixivLink = actions.getByRole('link');
+  await expect(followButton).toHaveText('关注');
+  const [buttonBefore, linkBefore] = await Promise.all([
+    followButton.boundingBox(),
+    pixivLink.boundingBox()
+  ]);
+
+  await followButton.click();
+  const error = actions.getByRole('alert');
+  await expect(error).toContainText('关注状态暂时无法更新');
+  const [buttonAfter, linkAfter, errorBox] = await Promise.all([
+    followButton.boundingBox(),
+    pixivLink.boundingBox(),
+    error.boundingBox()
+  ]);
+  expect(buttonBefore).not.toBeNull();
+  expect(linkBefore).not.toBeNull();
+  expect(buttonAfter).not.toBeNull();
+  expect(linkAfter).not.toBeNull();
+  expect(errorBox).not.toBeNull();
+  expect(Math.abs(buttonAfter!.x - buttonBefore!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(buttonAfter!.y - buttonBefore!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(linkAfter!.x - linkBefore!.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(linkAfter!.y - linkBefore!.y)).toBeLessThanOrEqual(1);
+  expect(errorBox!.x + errorBox!.width).toBeLessThanOrEqual(buttonAfter!.x);
+  const viewport = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth
+  }));
+  expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth);
+});
+
 test('collected works without a cover are not labeled as metadata-only', async ({
   page
 }) => {

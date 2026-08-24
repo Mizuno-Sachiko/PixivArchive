@@ -78,7 +78,7 @@ done
 cp -a frontend/build "$package_root/frontend"
 install -m 0644 .env.example "$package_root/"
 install -m 0644 LICENSE "$package_root/"
-install -m 0755 start.sh stop.sh "$package_root/"
+install -m 0755 start.sh stop.sh upgrade.sh "$package_root/"
 install -m 0644 README.md "$package_root/README.md"
 {
   printf 'git_commit=%s\n' "$git_commit"
@@ -92,7 +92,18 @@ install -m 0644 README.md "$package_root/README.md"
 install -d dist
 archive="dist/pixivarchive-linux-x86_64.tar.gz"
 checksum="${archive}.sha256"
-tar -C "$release_tmp" -czf "$archive" pixivarchive
+tar \
+  --owner=0 \
+  --group=0 \
+  --numeric-owner \
+  -C "$release_tmp" \
+  -czf "$archive" \
+  pixivarchive
+archive_owners="$(tar --numeric-owner -tvzf "$archive" | awk '{ print $2 }' | sort -u)"
+if [ "$archive_owners" != "0/0" ]; then
+  echo "release archive contains non-root ownership: $archive_owners" >&2
+  exit 1
+fi
 (
   cd dist
   sha256sum "$(basename "$archive")" >"$(basename "$checksum")"

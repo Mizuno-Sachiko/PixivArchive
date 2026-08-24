@@ -1,19 +1,104 @@
 use sqlx::PgPool;
 
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../../migrations");
+
+#[tokio::test]
+async fn upgrading_from_v1_preserves_existing_revisions() {
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must point at the isolated test database");
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let mut upgrade = pool.acquire().await.unwrap();
+
+    sqlx::query("CREATE SCHEMA migration_upgrade_fixture")
+        .execute(&mut *upgrade)
+        .await
+        .unwrap();
+    sqlx::query("SET search_path TO migration_upgrade_fixture, public")
+        .execute(&mut *upgrade)
+        .await
+        .unwrap();
+    MIGRATOR.run_to(1, &mut *upgrade).await.unwrap();
+
+    let artist_id = uuid::Uuid::now_v7();
+    let work_id = uuid::Uuid::now_v7();
+    let revision_id = uuid::Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO artist (id, pixiv_artist_id, name) VALUES ($1, 920001, '升级测试作者')",
+    )
+    .bind(artist_id)
+    .execute(&mut *upgrade)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        INSERT INTO work (id, pixiv_work_id, artist_id, collection_state, source_state)
+        VALUES ($1, 920001, $2, 'metadata_only', 'present')
+        "#,
+    )
+    .bind(work_id)
+    .bind(artist_id)
+    .execute(&mut *upgrade)
+    .await
+    .unwrap();
+    sqlx::query(
+        r#"
+        INSERT INTO work_revision (
+            id, work_id, title, work_kind, page_count, sanity_level
+        )
+        VALUES ($1, $2, '迁移前修订', 'illustration', 1, 'all_age')
+        "#,
+    )
+    .bind(revision_id)
+    .bind(work_id)
+    .execute(&mut *upgrade)
+    .await
+    .unwrap();
+
+    MIGRATOR.run(&mut *upgrade).await.unwrap();
+
+    let migration_versions =
+        sqlx::query_scalar::<_, i64>("SELECT version FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&mut *upgrade)
+            .await
+            .unwrap();
+    let preserved_title: String =
+        sqlx::query_scalar("SELECT title FROM work_revision WHERE id = $1")
+            .bind(revision_id)
+            .fetch_one(&mut *upgrade)
+            .await
+            .unwrap();
+    let source_count: i64 = sqlx::query_scalar("SELECT count(*) FROM work_revision_source")
+        .fetch_one(&mut *upgrade)
+        .await
+        .unwrap();
+    assert_eq!(migration_versions, [1, 2]);
+    assert_eq!(preserved_title, "迁移前修订");
+    assert_eq!(source_count, 0);
+
+    sqlx::query("SET search_path TO public")
+        .execute(&mut *upgrade)
+        .await
+        .unwrap();
+    sqlx::query("DROP SCHEMA migration_upgrade_fixture CASCADE")
+        .execute(&mut *upgrade)
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 async fn initial_migration_creates_the_complete_schema() {
     let database_url = std::env::var("DATABASE_URL")
         .expect("DATABASE_URL must point at the isolated test database");
     let pool = PgPool::connect(&database_url).await.unwrap();
 
-    sqlx::migrate!("../../migrations").run(&pool).await.unwrap();
+    MIGRATOR.run(&pool).await.unwrap();
 
     let migration_versions =
         sqlx::query_scalar::<_, i64>("SELECT version FROM _sqlx_migrations ORDER BY version")
             .fetch_all(&pool)
             .await
             .unwrap();
-    assert_eq!(migration_versions, [1]);
+    assert_eq!(migration_versions, [1, 2]);
 
     let tables = sqlx::query_scalar::<_, String>(
         r#"
@@ -68,6 +153,7 @@ async fn initial_migration_creates_the_complete_schema() {
             "work",
             "work_page",
             "work_revision",
+            "work_revision_source",
             "work_tag",
             "worker_heartbeat",
         ]
@@ -182,6 +268,24 @@ async fn initial_migration_creates_the_complete_schema() {
     .await
     .unwrap();
     assert_eq!(trash_indexes, 2);
+
+    let revision_source_indexes: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+          AND indexname = ANY($1)
+        "#,
+    )
+    .bind([
+        "work_revision_source_revision_idx",
+        "work_revision_source_subscription_idx",
+        "work_revision_source_run_idx",
+    ])
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(revision_source_indexes, 3);
 
     let rule_catalog_order_columns: i64 = sqlx::query_scalar(
         r#"

@@ -84,6 +84,7 @@ impl LockedDb {
                 media_revision,
                 work_page,
                 work,
+                work_revision_source,
                 work_revision,
                 tag,
                 series,

@@ -394,7 +394,7 @@ async fn following_uses_lookback_and_bookmarks_read_both_visibilities() {
             .into_iter()
             .map(|request| request.page)
             .collect::<Vec<_>>(),
-        vec![2, 3, 4]
+        vec![1, 2, 3]
     );
     assert_eq!(
         gateway
@@ -468,9 +468,10 @@ async fn following_full_sync_reads_from_the_first_page_until_pixiv_is_empty() {
 }
 
 #[tokio::test]
-async fn following_rejects_cursor_pages_that_cannot_be_represented() {
+async fn following_incremental_runs_replace_legacy_page_progress_with_a_recent_window() {
     let locked = LockedDb::new(DISCOVERY_LOCK_ID).await;
     let gateway = FakePixivGateway::new();
+    gateway.set_follow_items(vec![discovery_work(1381)]);
     gateway.set_following_authors(
         vec![PixivFollowedArtist {
             pixiv_id: 100,
@@ -482,33 +483,48 @@ async fn following_rejects_cursor_pages_that_cannot_be_represented() {
     let account = account(&locked, gateway.clone()).await;
     let service = SubscriptionService::new(locked.db.clone());
     let subscription =
-        configure_following_subscription(&locked.db, account.id, PixivFollowLatestMode::All, 60, 2)
+        configure_following_subscription(&locked.db, account.id, PixivFollowLatestMode::All, 60, 1)
             .await;
     save_cursor_value(
         &locked,
         subscription.id,
         "normal",
         "following:following:all",
-        json!({ "page": u64::from(u32::MAX) + 1 }),
+        json!({ "page": 619 }),
     )
     .await;
-    let run = service
-        .start_manual_run(subscription.id, false)
-        .await
-        .unwrap();
-    let unit = unit_rows(&locked, run.run_id).await.remove(0);
+    let executor = SubscriptionExecutionService::new(locked.db.clone(), gateway.clone());
+    for _ in 0..2 {
+        let run = service
+            .start_manual_run(subscription.id, false)
+            .await
+            .unwrap();
+        let unit = unit_rows(&locked, run.run_id).await.remove(0);
+        let result = executor
+            .execute_unit(SubscriptionUnitRequest {
+                context: context(),
+                unit_id: unit.id,
+            })
+            .await
+            .unwrap();
+        assert_eq!(result.status, SubscriptionRunStatus::Succeeded);
+    }
 
-    let result = SubscriptionExecutionService::new(locked.db.clone(), gateway.clone())
-        .execute_unit(SubscriptionUnitRequest {
-            context: context(),
-            unit_id: unit.id,
-        })
-        .await
-        .unwrap();
-
-    assert_eq!(result.status, SubscriptionRunStatus::Failed);
-    assert_eq!(result.error_class.as_deref(), Some("permanent"));
-    assert!(gateway.follow_requests().is_empty());
+    assert_eq!(
+        gateway
+            .follow_requests()
+            .into_iter()
+            .map(|request| request.page)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 1, 2]
+    );
+    assert!(
+        SubscriptionRepository::new(locked.db.clone())
+            .source_cursor(subscription.id, "normal", "following:following:all")
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]

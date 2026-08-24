@@ -121,9 +121,9 @@
 
 <style>
   .artist-follow-action {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
   }
 
   button {
@@ -132,9 +132,21 @@
   }
 
   .follow-error {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + 0.45rem);
+    width: max-content;
     max-width: 15rem;
     color: var(--color-error);
     font-size: 0.7rem;
     line-height: 1.35;
+    text-align: right;
+    transform: translateY(-50%);
+  }
+
+  @media (max-width: 720px) {
+    .follow-error {
+      max-width: min(15rem, calc(100vw - 11rem));
+    }
   }
 </style>

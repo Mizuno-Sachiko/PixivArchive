@@ -33,8 +33,10 @@
         <dd class="version-details">
           {#if error}
             <span class="inline-message error" role="alert">{error}</span>
+          {:else if status}
+            <span>v{status.version}</span>
           {:else}
-            <span>v{status?.version ?? '—'}</span>
+            <span class="version-loading" aria-label="正在读取版本"></span>
           {/if}
           <a
             class="repository-link"
@@ -93,6 +95,14 @@
     column-gap: var(--metadata-gap);
     row-gap: 0.75rem;
     flex-wrap: wrap;
+  }
+
+  .version-loading {
+    display: inline-block;
+    width: 3.5rem;
+    height: 1px;
+    flex: 0 0 auto;
+    background: var(--color-text-3);
   }
 
   .repository-link {

@@ -124,7 +124,10 @@ where
                     error_message: None,
                     cursor_kind: unit.cursor_kind,
                     source_key: unit.source_key,
-                    cursor_value: executed.cursor_value,
+                    cursor_update: executed.cursor_value.map_or(
+                        SubscriptionCursorUpdate::Clear,
+                        SubscriptionCursorUpdate::Set,
+                    ),
                 };
                 Ok(SubscriptionUnitAttemptResult {
                     result: SubscriptionExecutionResult {
@@ -194,7 +197,7 @@ where
                 error_message: error_message.map(str::to_owned),
                 cursor_kind: unit.cursor_kind,
                 source_key: unit.source_key,
-                cursor_value: None,
+                cursor_update: SubscriptionCursorUpdate::Keep,
             })
             .await?;
         Ok(())

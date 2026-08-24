@@ -123,6 +123,8 @@ pub struct SubscriptionRunUnitRecord {
     pub schedule: Value,
     pub rule_id: Option<Uuid>,
     pub pixiv_account_id: Uuid,
+    pub subscription_name: String,
+    pub pixiv_user_id: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -177,6 +179,13 @@ pub struct FinishSubscriptionRun {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum SubscriptionCursorUpdate {
+    Keep,
+    Set(Value),
+    Clear,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct FinishSubscriptionRunUnit {
     pub unit_id: Uuid,
     pub state: DomainRunStatus,
@@ -186,7 +195,7 @@ pub struct FinishSubscriptionRunUnit {
     pub error_message: Option<String>,
     pub cursor_kind: String,
     pub source_key: String,
-    pub cursor_value: Option<Value>,
+    pub cursor_update: SubscriptionCursorUpdate,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -467,5 +476,7 @@ pub(super) fn unit_from_row(
         schedule: row.get::<Json<Value>, _>("schedule").0,
         rule_id: row.get("rule_id"),
         pixiv_account_id: row.get("pixiv_account_id"),
+        subscription_name: row.get("subscription_name"),
+        pixiv_user_id: row.get("pixiv_user_id"),
     })
 }

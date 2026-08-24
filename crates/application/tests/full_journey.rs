@@ -220,6 +220,7 @@ async fn full_journey_preserves_rules_media_and_deletion_decisions() {
             forced: false,
             rule_document: Some(&download_document()),
             discovery: WorkDiscoveryContext::default(),
+            revision_source: None,
             download_priority: JobPriority::ManualImport,
         })
         .await
@@ -233,6 +234,7 @@ async fn full_journey_preserves_rules_media_and_deletion_decisions() {
             forced: false,
             rule_document: Some(&download_document()),
             discovery: WorkDiscoveryContext::default(),
+            revision_source: None,
             download_priority: JobPriority::ManualImport,
         })
         .await

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import type { GalleryWorkDetail } from '$lib/api/gallery';
   import WorkThumbnail from '$lib/components/ui/WorkThumbnail.svelte';
 
@@ -11,6 +13,28 @@
 
   let { pages, activePageIndex, ageRating, onSelect }: Props = $props();
   let strip = $state<HTMLDivElement>();
+
+  $effect(() => {
+    const index = activePageIndex;
+    void keepActivePageVisible(index);
+  });
+
+  async function keepActivePageVisible(index: number): Promise<void> {
+    await tick();
+    if (!strip || activePageIndex !== index) return;
+    const active = strip.querySelector<HTMLElement>(
+      `[data-page-index="${index}"]`
+    );
+    if (!active) return;
+
+    const stripBounds = strip.getBoundingClientRect();
+    const activeBounds = active.getBoundingClientRect();
+    if (activeBounds.left < stripBounds.left) {
+      strip.scrollLeft -= stripBounds.left - activeBounds.left;
+    } else if (activeBounds.right > stripBounds.right) {
+      strip.scrollLeft += activeBounds.right - stripBounds.right;
+    }
+  }
 
   function handleWheel(event: WheelEvent): void {
     if (!strip || strip.scrollWidth <= strip.clientWidth) return;
@@ -29,6 +53,7 @@
 >
   {#each pages as workPage, index (workPage.id)}
     <button
+      data-page-index={index}
       class:active={index === activePageIndex}
       type="button"
       aria-label={`查看第${index + 1}页`}

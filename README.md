@@ -110,7 +110,7 @@ graph TB
 ### 环境要求
 
 - Docker部署：Docker Engine和Docker Compose
-- 原生部署：x86_64 Linux、Bash、PostgreSQL和提供`vipsthumbnail`命令的libvips
+- 原生部署：x86_64 Linux、Bash、curl、PostgreSQL和提供`vipsthumbnail`命令的libvips
 - 一个已经存在并具有足够空间的媒体目录
 - 能够访问Pixiv；需要时可以为Web与Worker配置相同代理
 
@@ -206,9 +206,36 @@ pixivarchive/
 ├── LICENSE
 ├── start.sh
 ├── stop.sh
+├── upgrade.sh
 ├── README.md
 └── SOURCE_STATE
 ```
+
+### 升级
+
+Docker与原生Linux Release使用两套独立的升级流程。启动时`prepare`会在Web和Worker之前执行尚未应用的数据库迁移；`.env`、PostgreSQL数据和媒体目录保持原位。
+
+#### Docker升级
+
+在Docker源码目录中运行：
+
+```bash
+docker compose down
+git pull --ff-only
+docker compose pull
+docker compose up -d
+```
+
+#### 原生Linux Release升级
+
+原生Release目录不包含Git元数据。在安装目录中停止当前进程，再运行带明确覆盖标志的升级脚本：
+
+```bash
+bash stop.sh
+bash upgrade.sh --latest --force
+```
+
+`--latest`会解析GitHub最新稳定Release并显示实际版本。需要固定版本或回退时，可以传入明确的版本标签，例如`bash upgrade.sh v1.2.3 --force`。
 
 ## 配置说明
 

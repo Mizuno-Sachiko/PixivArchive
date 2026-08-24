@@ -85,6 +85,39 @@ describe('gallery query state', () => {
     ]);
   });
 
+  it('builds bookmark count filters from optional range bounds', () => {
+    const query = createGalleryQueryStore();
+    expect(query.build().groups).toEqual([]);
+
+    query.minimumBookmarks = 100;
+    expect(query.build().groups[0].filters).toContainEqual({
+      type: 'number',
+      field: 'bookmark_count',
+      comparison: { operator: 'greater_than_or_equal', value: 100 }
+    });
+
+    query.reset();
+    query.maximumBookmarks = 500;
+    expect(query.build().groups[0].filters).toContainEqual({
+      type: 'number',
+      field: 'bookmark_count',
+      comparison: { operator: 'less_than_or_equal', value: 500 }
+    });
+
+    query.minimumBookmarks = 100;
+    expect(query.build().groups[0].filters).toContainEqual({
+      type: 'number',
+      field: 'bookmark_count',
+      comparison: {
+        operator: 'between',
+        value: { min: 100, max: 500 }
+      }
+    });
+
+    query.minimumBookmarks = 600;
+    expect(query.validationError).toBe('收藏数下限不能大于上限');
+  });
+
   it('uses only positive safe integers as Pixiv work IDs', () => {
     const query = createGalleryQueryStore();
     query.searchText = '120001';

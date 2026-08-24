@@ -156,8 +156,9 @@ mod tests {
     }
 
     #[test]
-    fn embedded_migrations_contain_only_the_initial_schema() {
+    fn embedded_migrations_append_revision_sources_to_the_initial_schema() {
         assert!(MIGRATOR.version_exists(1));
-        assert!(!MIGRATOR.version_exists(2));
+        assert!(MIGRATOR.version_exists(2));
+        assert!(!MIGRATOR.version_exists(3));
     }
 }

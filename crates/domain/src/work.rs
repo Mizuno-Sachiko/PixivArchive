@@ -631,4 +631,11 @@ pub struct WorkRevisionSummary {
     pub work_kind: PixivWorkKind,
     pub page_count: u32,
     pub captured_at: OffsetDateTime,
+    pub sources: Vec<WorkRevisionSourceSummary>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct WorkRevisionSourceSummary {
+    pub subscription_name: String,
+    pub pixiv_user_id: i64,
 }

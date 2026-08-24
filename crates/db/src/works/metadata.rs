@@ -11,8 +11,8 @@ use uuid::Uuid;
 mod save_pixiv;
 
 use save_pixiv::{
-    PreparedPixivMetadata, ensure_not_deleted, replace_tags, store_current_revision, sync_pages,
-    update_bookmark, upsert_artist, upsert_series, upsert_work,
+    PreparedPixivMetadata, ensure_not_deleted, insert_work_revision_source, replace_tags,
+    store_current_revision, sync_pages, update_bookmark, upsert_artist, upsert_series, upsert_work,
 };
 
 impl WorkRepository {
@@ -229,7 +229,11 @@ impl WorkRepository {
         let artist_id = upsert_artist(&mut tx, &input).await?;
         let series_id = upsert_series(&mut tx, &input).await?;
         let work = upsert_work(&mut tx, &input, &prepared, artist_id, series_id).await?;
-        store_current_revision(&mut tx, &input, &prepared, &work).await?;
+        if let Some(revision_id) = store_current_revision(&mut tx, &input, &prepared, &work).await?
+            && let Some(source) = input.revision_source.as_ref()
+        {
+            insert_work_revision_source(&mut tx, revision_id, source).await?;
+        }
         replace_tags(&mut tx, &input, work.id()).await?;
         update_bookmark(&mut tx, &input, work.id()).await?;
         sync_pages(&mut tx, &input, &prepared, work.id()).await?;

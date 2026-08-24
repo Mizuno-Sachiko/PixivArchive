@@ -148,7 +148,9 @@ async fn login_session_rule_and_gallery_resources_follow_the_contract() {
         .await
         .unwrap();
     assert_eq!(revisions.status(), StatusCode::OK);
-    assert_eq!(response_json(revisions).await.as_array().unwrap().len(), 1);
+    let revisions = response_json(revisions).await;
+    assert_eq!(revisions.as_array().unwrap().len(), 1);
+    assert_eq!(revisions[0]["sources"], json!([]));
 }
 
 #[tokio::test]

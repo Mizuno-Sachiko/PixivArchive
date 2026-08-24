@@ -30,7 +30,11 @@ detect_pg_port() {
   fi
 
   if command -v pg_lsclusters >/dev/null 2>&1; then
-    pg_lsclusters --no-header 2>/dev/null | awk '$4 == "online" { print $3; exit }'
+    pg_lsclusters --no-header 2>/dev/null | awk '
+      NR == 1 { fallback = $3 }
+      $4 == "online" { print $3; found = 1; exit }
+      END { if (!found && fallback != "") print fallback }
+    '
     return
   fi
 

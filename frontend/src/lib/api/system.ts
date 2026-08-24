@@ -8,6 +8,7 @@ export type PixivAccountUpdate =
   components['schemas']['UpdatePixivAccountBody'];
 export type ComponentStatus = components['schemas']['ComponentStatusDto'];
 export type StorageStatus = components['schemas']['StorageStatusDto'];
+export type MediaUsage = components['schemas']['MediaUsageDto'];
 export type DeploymentCapabilities =
   components['schemas']['SystemCapabilitiesDto'];
 export type SystemStatus = components['schemas']['SystemStatusDto'];
@@ -41,6 +42,7 @@ export type MaintenanceAccepted =
 
 export interface SystemApi {
   status(): Promise<SystemStatus>;
+  mediaUsage(): Promise<MediaUsage>;
   settings(): Promise<EffectiveSettings>;
   saveSetting(...arguments_: SaveSettingArguments): Promise<SavedSetting>;
   saveSettings(updates: SettingUpdate[]): Promise<SavedSetting[]>;
@@ -63,6 +65,9 @@ export function createSystemApi(request: ApiRequest = apiRequest): SystemApi {
   return {
     status() {
       return request(endpoints.systemStatus);
+    },
+    mediaUsage() {
+      return request(endpoints.systemStorageUsage);
     },
     async settings() {
       const response = await request<components['schemas']['SettingsDto']>(

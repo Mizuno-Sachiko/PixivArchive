@@ -1,8 +1,8 @@
 use super::*;
 
-impl SubscriptionRepository {
-    pub async fn load_unit(&self, unit_id: Uuid) -> Result<SubscriptionRunUnitRecord, DbError> {
-        let row = sqlx::query(
+macro_rules! subscription_run_unit_query {
+    ($selection:literal) => {
+        concat!(
             r#"
             SELECT u.id,
                    u.subscription_run_id,
@@ -20,16 +20,25 @@ impl SubscriptionRepository {
                    s.kind,
                    s.schedule,
                    s.rule_id,
-                   s.pixiv_account_id
+                   s.pixiv_account_id,
+                   s.name AS subscription_name,
+                   account.pixiv_user_id
             FROM subscription_run_unit u
             JOIN subscription_run sr ON sr.id = u.subscription_run_id
             JOIN subscription s ON s.id = sr.subscription_id
-            WHERE u.id = $1
+            JOIN pixiv_account account ON account.id = s.pixiv_account_id
             "#,
+            $selection
         )
-        .bind(unit_id)
-        .fetch_one(self.db.pool())
-        .await?;
+    };
+}
+
+impl SubscriptionRepository {
+    pub async fn load_unit(&self, unit_id: Uuid) -> Result<SubscriptionRunUnitRecord, DbError> {
+        let row = sqlx::query(subscription_run_unit_query!("WHERE u.id = $1"))
+            .bind(unit_id)
+            .fetch_one(self.db.pool())
+            .await?;
         unit_from_row(&row)
     }
 
@@ -37,34 +46,10 @@ impl SubscriptionRepository {
         &self,
         job_id: Uuid,
     ) -> Result<SubscriptionRunUnitRecord, DbError> {
-        let row = sqlx::query(
-            r#"
-            SELECT u.id,
-                   u.subscription_run_id,
-                   u.job_id,
-                   u.source_key,
-                   u.cursor_kind,
-                   u.params_snapshot,
-                   u.cursor_snapshot,
-                   u.state,
-                   u.error_class,
-                   u.error_message,
-                   sr.rule_version_id,
-                   sr.rule_document,
-                   s.id AS subscription_id,
-                   s.kind,
-                   s.schedule,
-                   s.rule_id,
-                   s.pixiv_account_id
-            FROM subscription_run_unit u
-            JOIN subscription_run sr ON sr.id = u.subscription_run_id
-            JOIN subscription s ON s.id = sr.subscription_id
-            WHERE u.job_id = $1
-            "#,
-        )
-        .bind(job_id)
-        .fetch_one(self.db.pool())
-        .await?;
+        let row = sqlx::query(subscription_run_unit_query!("WHERE u.job_id = $1"))
+            .bind(job_id)
+            .fetch_one(self.db.pool())
+            .await?;
         unit_from_row(&row)
     }
 
@@ -72,32 +57,9 @@ impl SubscriptionRepository {
         &self,
         run_id: Uuid,
     ) -> Result<Vec<SubscriptionRunUnitRecord>, DbError> {
-        let rows = sqlx::query(
-            r#"
-            SELECT u.id,
-                   u.subscription_run_id,
-                   u.job_id,
-                   u.source_key,
-                   u.cursor_kind,
-                   u.params_snapshot,
-                   u.cursor_snapshot,
-                   u.state,
-                   u.error_class,
-                   u.error_message,
-                   sr.rule_version_id,
-                   sr.rule_document,
-                   s.id AS subscription_id,
-                   s.kind,
-                   s.schedule,
-                   s.rule_id,
-                   s.pixiv_account_id
-            FROM subscription_run_unit u
-            JOIN subscription_run sr ON sr.id = u.subscription_run_id
-            JOIN subscription s ON s.id = sr.subscription_id
-            WHERE u.subscription_run_id = $1
-            ORDER BY u.source_key
-            "#,
-        )
+        let rows = sqlx::query(subscription_run_unit_query!(
+            "WHERE u.subscription_run_id = $1 ORDER BY u.source_key"
+        ))
         .bind(run_id)
         .fetch_all(self.db.pool())
         .await?;
@@ -349,25 +311,43 @@ impl SubscriptionRepository {
             return Err(DbError::RevisionConflict);
         }
 
-        if finished.state == SubscriptionRunStatus::Succeeded
-            && let Some(cursor_value) = finished.cursor_value
-        {
-            sqlx::query(
-                r#"
-                INSERT INTO subscription_cursor (id, subscription_id, cursor_kind, source_key, cursor_value)
-                VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (subscription_id, cursor_kind, source_key)
-                DO UPDATE SET cursor_value = excluded.cursor_value,
-                              updated_at = now()
-                "#,
-            )
-            .bind(Uuid::now_v7())
-            .bind(subscription_id)
-            .bind(&finished.cursor_kind)
-            .bind(&finished.source_key)
-            .bind(Json(cursor_value))
-            .execute(&mut **tx)
-            .await?;
+        if finished.state == SubscriptionRunStatus::Succeeded {
+            match &finished.cursor_update {
+                SubscriptionCursorUpdate::Keep => {}
+                SubscriptionCursorUpdate::Set(cursor_value) => {
+                    sqlx::query(
+                        r#"
+                        INSERT INTO subscription_cursor (id, subscription_id, cursor_kind, source_key, cursor_value)
+                        VALUES ($1, $2, $3, $4, $5)
+                        ON CONFLICT (subscription_id, cursor_kind, source_key)
+                        DO UPDATE SET cursor_value = excluded.cursor_value,
+                                      updated_at = now()
+                        "#,
+                    )
+                    .bind(Uuid::now_v7())
+                    .bind(subscription_id)
+                    .bind(&finished.cursor_kind)
+                    .bind(&finished.source_key)
+                    .bind(Json(cursor_value))
+                    .execute(&mut **tx)
+                    .await?;
+                }
+                SubscriptionCursorUpdate::Clear => {
+                    sqlx::query(
+                        r#"
+                        DELETE FROM subscription_cursor
+                        WHERE subscription_id = $1
+                          AND cursor_kind = $2
+                          AND source_key = $3
+                        "#,
+                    )
+                    .bind(subscription_id)
+                    .bind(&finished.cursor_kind)
+                    .bind(&finished.source_key)
+                    .execute(&mut **tx)
+                    .await?;
+                }
+            }
         }
 
         let result = self

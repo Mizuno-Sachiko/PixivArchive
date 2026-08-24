@@ -13,7 +13,8 @@ use pixivarchive_domain::{
     pixiv::{PixivUgoiraMeta, PixivWorkKind},
     work::{
         FilterMode, GalleryDerivative, GalleryFilter, GalleryFilterGroup, GalleryMediaRevision,
-        GalleryPage, GallerySearch, GalleryWorkDetail, WorkRevisionSummary, WorkSourceState,
+        GalleryPage, GallerySearch, GalleryWorkDetail, WorkRevisionSourceSummary,
+        WorkRevisionSummary, WorkSourceState,
     },
 };
 use serde_json::Value;
@@ -189,10 +190,16 @@ impl GalleryRepository {
         .bind(work_id)
         .fetch_all(self.db.pool())
         .await?;
+        let revision_ids = rows
+            .iter()
+            .map(|row| row.get::<Uuid, _>("id"))
+            .collect::<Vec<_>>();
+        let mut sources = self.load_revision_sources(&revision_ids).await?;
         rows.into_iter()
             .map(|row| {
+                let id = row.get("id");
                 Ok(WorkRevisionSummary {
-                    id: row.get("id"),
+                    id,
                     title: row.get("title"),
                     description: row.get("caption"),
                     work_kind: parse_enum_value(
@@ -202,9 +209,41 @@ impl GalleryRepository {
                     )?,
                     page_count: non_negative_u32(row.get("page_count"), "revision page count")?,
                     captured_at: row.get("captured_at"),
+                    sources: sources.remove(&id).unwrap_or_default(),
                 })
             })
             .collect()
+    }
+
+    async fn load_revision_sources(
+        &self,
+        revision_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, Vec<WorkRevisionSourceSummary>>, DbError> {
+        if revision_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows = sqlx::query(
+            r#"
+            SELECT work_revision_id, subscription_name, pixiv_user_id
+            FROM work_revision_source
+            WHERE work_revision_id = ANY($1)
+            ORDER BY work_revision_id, recorded_at DESC, subscription_name, id DESC
+            "#,
+        )
+        .bind(revision_ids)
+        .fetch_all(self.db.pool())
+        .await?;
+        let mut sources = HashMap::<Uuid, Vec<WorkRevisionSourceSummary>>::new();
+        for row in rows {
+            sources
+                .entry(row.get("work_revision_id"))
+                .or_default()
+                .push(WorkRevisionSourceSummary {
+                    subscription_name: row.get("subscription_name"),
+                    pixiv_user_id: row.get("pixiv_user_id"),
+                });
+        }
+        Ok(sources)
     }
 
     async fn load_derivatives(

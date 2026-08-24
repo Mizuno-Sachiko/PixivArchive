@@ -10,7 +10,7 @@ use pixivarchive_domain::{
     pixiv::PixivWorkKind,
     work::{
         GalleryDerivative, GalleryMediaRevision, GalleryPage, GalleryWorkDetail,
-        TrashActionCapabilities, WorkRevisionSummary, WorkSourceState,
+        TrashActionCapabilities, WorkRevisionSourceSummary, WorkRevisionSummary, WorkSourceState,
     },
 };
 use serde::Serialize;
@@ -193,6 +193,21 @@ pub(crate) async fn work_id_by_pixiv_id(
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
+pub struct WorkRevisionSourceDto {
+    pub subscription_name: String,
+    pub pixiv_user_id: i64,
+}
+
+impl From<WorkRevisionSourceSummary> for WorkRevisionSourceDto {
+    fn from(source: WorkRevisionSourceSummary) -> Self {
+        Self {
+            subscription_name: source.subscription_name,
+            pixiv_user_id: source.pixiv_user_id,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, ToSchema)]
 pub struct WorkRevisionSummaryDto {
     pub id: Uuid,
     pub title: String,
@@ -202,6 +217,7 @@ pub struct WorkRevisionSummaryDto {
     pub page_count: u32,
     #[serde(with = "time::serde::rfc3339")]
     pub captured_at: OffsetDateTime,
+    pub sources: Vec<WorkRevisionSourceDto>,
 }
 
 impl From<WorkRevisionSummary> for WorkRevisionSummaryDto {
@@ -213,6 +229,11 @@ impl From<WorkRevisionSummary> for WorkRevisionSummaryDto {
             work_kind: revision.work_kind,
             page_count: revision.page_count,
             captured_at: revision.captured_at,
+            sources: revision
+                .sources
+                .into_iter()
+                .map(WorkRevisionSourceDto::from)
+                .collect(),
         }
     }
 }

@@ -306,6 +306,7 @@ where
             forced: request.forced,
             rule_document: request.rule_document.as_ref(),
             discovery: WorkDiscoveryContext::default(),
+            revision_source: None,
             download_priority: priority,
         };
         let processed = match lease {

@@ -153,7 +153,21 @@
           <span class="revision-time">
             <ReadableTime value={revision.captured_at} exact />
           </span>
-          <small>{revision.page_count}页 · {revision.work_kind}</small>
+          <div class="revision-details">
+            <small class="revision-meta"
+              >{revision.page_count}页 · {revision.work_kind}</small
+            >
+            {#if revision.sources.length > 0}
+              <small class="revision-source">
+                来自：{revision.sources
+                  .map(
+                    (source) =>
+                      `${source.subscription_name} · 账户${source.pixiv_user_id}`
+                  )
+                  .join('、')}
+              </small>
+            {/if}
+          </div>
         </div>
       {/each}
     </div>
@@ -311,7 +325,7 @@
     overflow-wrap: anywhere;
   }
 
-  .revision-list div {
+  .revision-list > div {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.25rem 0.8rem;
@@ -330,8 +344,34 @@
     font-size: 0.66rem;
   }
 
-  .revision-list small {
+  .revision-list .revision-time {
+    justify-self: end;
+    text-align: right;
+  }
+
+  .revision-details {
+    display: flex;
+    min-width: 0;
     grid-column: 1 / -1;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 0.8rem;
+  }
+
+  .revision-list .revision-meta,
+  .revision-list .revision-source {
+    flex: 0 0 auto;
+    max-width: 100%;
+  }
+
+  .revision-list .revision-source {
+    margin-left: auto;
+    text-align: right;
+  }
+
+  .revision-list small {
+    overflow-wrap: anywhere;
   }
 
   @media (max-width: 720px) {

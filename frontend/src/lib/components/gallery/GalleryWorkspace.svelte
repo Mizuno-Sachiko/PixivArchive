@@ -204,6 +204,10 @@
   async function runSearch(reset: boolean, useDraft = true): Promise<boolean> {
     if (selection.busy) return false;
     if (reset) {
+      if (useDraft && query.validationError) {
+        search.error = query.validationError;
+        return false;
+      }
       const targetVersions = currentResourceVersions();
       const request = useDraft
         ? withBaseGroups(query.build())

@@ -1,7 +1,7 @@
 mod support;
 
 use pixivarchive_db::{
-    DbError, FinishSubscriptionRunUnit, JobCompletion, JobRepository,
+    DbError, FinishSubscriptionRunUnit, JobCompletion, JobRepository, SubscriptionCursorUpdate,
     subscriptions::{
         FinishSubscriptionRun, FinishSubscriptionRunResult, ScheduleDueSubscription,
         ScheduleDueSubscriptionResult, SubscriptionRepository,
@@ -885,7 +885,7 @@ async fn successful_subscription_completion_updates_job_unit_and_cursor_atomical
             error_message: None,
             cursor_kind: unit.cursor_kind.clone(),
             source_key: unit.source_key.clone(),
-            cursor_value: Some(json!({"page": 2})),
+            cursor_update: SubscriptionCursorUpdate::Set(json!({"page": 2})),
         }),
     )
     .await
@@ -969,7 +969,7 @@ async fn cancelling_a_running_subscription_job_finishes_the_run_and_keeps_merged
                 error_message: None,
                 cursor_kind: unit.cursor_kind.clone(),
                 source_key: unit.source_key.clone(),
-                cursor_value: Some(json!({"page": 2})),
+                cursor_update: SubscriptionCursorUpdate::Set(json!({"page": 2})),
             }),
         )
         .await;

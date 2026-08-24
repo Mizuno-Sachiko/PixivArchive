@@ -45,6 +45,7 @@
   ];
 
   let status = $state<SystemStatus | null>(null);
+  let mediaUsageBytes = $state<number | null>(null);
   let settings = $state<EffectiveSettings | null>(null);
   let busyOperation = $state<string | null>(null);
   let message = $state('');
@@ -81,6 +82,7 @@
   async function loadSettings(): Promise<boolean> {
     const request = settingsRequests.begin();
     loading = true;
+    const loadedMediaUsage = systemApi.mediaUsage().catch(() => null);
     try {
       const [loadedStatus, loadedSettings] = await Promise.all([
         systemApi.status(),
@@ -90,6 +92,11 @@
       status = loadedStatus;
       settings = loadedSettings;
       error = '';
+      void loadedMediaUsage.then((usage) => {
+        if (settingsRequests.isCurrent(request)) {
+          mediaUsageBytes = usage?.media_directory_bytes ?? null;
+        }
+      });
       return true;
     } catch {
       if (settingsRequests.isCurrent(request)) {
@@ -221,6 +228,14 @@
             <strong>{formatBytes(status.storage.total_bytes)}</strong>
           </div>
           <div>
+            <span>媒体目录大小</span>
+            <strong
+              >{mediaUsageBytes === null
+                ? '—'
+                : formatBytes(mediaUsageBytes)}</strong
+            >
+          </div>
+          <div>
             <span>预警阈值</span>
             <strong
               >{formatBytes(status.storage.warning_threshold_bytes)}</strong
@@ -296,7 +311,7 @@
 
   .capacity-values {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0.8rem;
   }
 

@@ -67,6 +67,7 @@ where
             unit_rule_document(unit)?
         };
         let account_id = unit.pixiv_account_id;
+        let revision_source = collection_source_context(unit);
         for work_id in work_ids {
             if !seen.insert(work_id) {
                 continue;
@@ -79,6 +80,7 @@ where
                 forced,
                 rule_document: rule_document.as_ref(),
                 discovery: WorkDiscoveryContext::default(),
+                revision_source: Some(revision_source.clone()),
                 download_priority: ownership.download_priority(),
             };
             let processed = match ownership {

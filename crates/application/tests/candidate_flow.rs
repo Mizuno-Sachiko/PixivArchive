@@ -37,6 +37,7 @@ async fn automatic_collection_keeps_deletion_marker_and_skips_pixiv_requests() {
             forced: false,
             rule_document: None,
             discovery: WorkDiscoveryContext::default(),
+            revision_source: None,
             download_priority: JobPriority::ScheduledCollection,
         })
         .await
@@ -71,6 +72,7 @@ async fn metadata_rule_can_ignore_without_fetching_pages_or_writing_a_work() {
             forced: false,
             rule_document: Some(&metadata_first_document()),
             discovery: WorkDiscoveryContext::default(),
+            revision_source: None,
             download_priority: JobPriority::ScheduledCollection,
         })
         .await
@@ -117,6 +119,7 @@ async fn missing_rule_document_defaults_to_downloading_the_work() {
             forced: false,
             rule_document: None,
             discovery: WorkDiscoveryContext::default(),
+            revision_source: None,
             download_priority: JobPriority::ScheduledCollection,
         })
         .await
@@ -157,6 +160,7 @@ async fn forced_candidate_downloads_even_when_rule_would_ignore() {
             forced: true,
             rule_document: Some(&metadata_first_document()),
             discovery: WorkDiscoveryContext::default(),
+            revision_source: None,
             download_priority: JobPriority::ManualImport,
         })
         .await
@@ -189,6 +193,7 @@ async fn page_quantifiers_fetch_page_metadata_without_downloading_media() {
             forced: false,
             rule_document: Some(&page_width_document()),
             discovery: WorkDiscoveryContext::default(),
+            revision_source: None,
             download_priority: JobPriority::ScheduledCollection,
         })
         .await
@@ -248,6 +253,7 @@ async fn download_action_enqueues_media_without_downloading_it() {
             forced: false,
             rule_document: Some(&document),
             discovery: WorkDiscoveryContext::default(),
+            revision_source: None,
             download_priority: JobPriority::ScheduledCollection,
         })
         .await

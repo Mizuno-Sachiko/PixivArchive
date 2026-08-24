@@ -1,5 +1,6 @@
 use super::SavePixivWorkMetadata;
 use crate::DbError;
+use crate::works::model::WorkRevisionSourceInput;
 use pixivarchive_domain::{
     job::{CollectionState, WorkSummary},
     pixiv::{PixivBookmarkVisibility, PixivWorkKind},
@@ -269,9 +270,9 @@ pub(super) async fn store_current_revision(
     input: &SavePixivWorkMetadata,
     prepared: &PreparedPixivMetadata,
     work: &StoredWork,
-) -> Result<(), DbError> {
+) -> Result<Option<Uuid>, DbError> {
     if work.previous_basis.as_ref() == Some(&prepared.revision_basis) {
-        return Ok(());
+        return Ok(None);
     }
     let detail = &input.detail;
     let revision_id = Uuid::now_v7();
@@ -319,6 +320,36 @@ pub(super) async fn store_current_revision(
         .bind(revision_id)
         .execute(&mut **tx)
         .await?;
+    Ok(Some(revision_id))
+}
+
+pub(super) async fn insert_work_revision_source(
+    tx: &mut MetadataTransaction<'_>,
+    revision_id: Uuid,
+    source: &WorkRevisionSourceInput,
+) -> Result<(), DbError> {
+    sqlx::query(
+        r#"
+        INSERT INTO work_revision_source (
+            id,
+            work_revision_id,
+            subscription_id,
+            subscription_run_id,
+            subscription_name,
+            pixiv_user_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (work_revision_id, subscription_run_id) DO NOTHING
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(revision_id)
+    .bind(source.subscription_id)
+    .bind(source.subscription_run_id)
+    .bind(&source.subscription_name)
+    .bind(source.pixiv_user_id)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 

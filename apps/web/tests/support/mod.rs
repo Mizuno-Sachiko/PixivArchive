@@ -77,6 +77,7 @@ impl LockedDb {
                 tag,
                 trash_entry,
                 deletion_marker,
+                work_revision_source,
                 work_revision,
                 work,
                 series,
