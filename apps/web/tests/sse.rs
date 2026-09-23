@@ -209,13 +209,19 @@ async fn build_app_with_event_stream(locked: &LockedDb, events: EventStream) -> 
 
 async fn append_event(db: &Db, payload: EventPayload) -> i64 {
     let events = EventRepository::new(db.clone());
+    let cursor = events
+        .replay_window(None, 100)
+        .await
+        .unwrap()
+        .latest_event_id
+        .unwrap_or(0);
     let mut tx = db.begin().await.unwrap();
-    let event = events
+    events
         .append_in_tx(&mut tx, EventResource::Job, Uuid::now_v7(), payload)
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    event.id
+    events.list_after(cursor, 1).await.unwrap()[0].id
 }
 
 async fn next_frame<S>(body: &mut S) -> String

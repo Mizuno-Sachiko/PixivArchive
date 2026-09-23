@@ -179,9 +179,11 @@ impl From<DbError> for ApiError {
         match error {
             DbError::NotFound => Self::not_found("Resource was not found"),
             DbError::RevisionConflict | DbError::LeaseConflict => Self::revision_conflict(),
-            DbError::Constraint(message) | DbError::InvalidValue(message) => {
-                Self::invalid_request(message)
+            DbError::Constraint(message) => {
+                tracing::warn!(error = %message, "database constraint rejected API request");
+                Self::invalid_request("The request violates a data constraint")
             }
+            DbError::InvalidValue(message) => Self::invalid_request(message),
             DbError::RateLimited {
                 retry_after_seconds,
             } => Self::new(
@@ -409,5 +411,16 @@ mod tests {
 
         assert_eq!(error.status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(error.body.code, "media_storage_unavailable");
+    }
+
+    #[test]
+    fn database_constraint_details_stay_server_side() {
+        let error = ApiError::from(DbError::Constraint(
+            "subscription_rule_id_fkey on private_table".to_owned(),
+        ));
+
+        assert_eq!(error.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(error.body.code, "invalid_request");
+        assert_eq!(error.body.message, "The request violates a data constraint");
     }
 }

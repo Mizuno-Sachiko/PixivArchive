@@ -54,6 +54,62 @@ async fn upgrading_from_v1_preserves_existing_revisions() {
     .await
     .unwrap();
 
+    let account_id = uuid::Uuid::now_v7();
+    sqlx::query(
+        r#"
+        INSERT INTO pixiv_account (id, pixiv_user_id, display_name, state)
+        VALUES ($1, 920001, '升级测试账户', 'unconfigured')
+        "#,
+    )
+    .bind(account_id)
+    .execute(&mut *upgrade)
+    .await
+    .unwrap();
+    let legacy_event_id: i64 = sqlx::query_scalar(
+        r#"
+        INSERT INTO app_event (resource, resource_id, payload)
+        VALUES ('job', $1, '{"type": "job_queued", "revision": 1}')
+        RETURNING id
+        "#,
+    )
+    .bind(uuid::Uuid::now_v7())
+    .fetch_one(&mut *upgrade)
+    .await
+    .unwrap();
+    let created_only_id = uuid::Uuid::now_v7();
+    let last_run_id = uuid::Uuid::now_v7();
+    let scheduled_id = uuid::Uuid::now_v7();
+    let disabled_id = uuid::Uuid::now_v7();
+    sqlx::query(
+        r#"
+        INSERT INTO subscription (
+            id, pixiv_account_id, name, kind, enabled, schedule, params,
+            last_run_at, next_run_at, created_at
+        )
+        VALUES
+            ($1, $5, '仅有创建时间', 'ranking', true,
+             '{"interval_minutes": 60, "lookback_pages": 0}', '{}',
+             NULL, NULL, '2026-09-01 00:00:00+00'),
+            ($2, $5, '已有运行时间', 'ranking', true,
+             '{"interval_minutes": 30, "lookback_pages": 0}', '{}',
+             '2026-09-02 00:00:00+00', NULL, '2026-09-01 00:00:00+00'),
+            ($3, $5, '已有计划', 'ranking', true,
+             '{"interval_minutes": 15, "lookback_pages": 0}', '{}',
+             NULL, '2026-09-04 00:00:00+00', '2026-09-01 00:00:00+00'),
+            ($4, $5, '停用订阅', 'ranking', false,
+             '{"interval_minutes": 120, "lookback_pages": 0}', '{}',
+             NULL, NULL, '2026-09-03 00:00:00+00')
+        "#,
+    )
+    .bind(created_only_id)
+    .bind(last_run_id)
+    .bind(scheduled_id)
+    .bind(disabled_id)
+    .bind(account_id)
+    .execute(&mut *upgrade)
+    .await
+    .unwrap();
+
     MIGRATOR.run(&mut *upgrade).await.unwrap();
 
     let migration_versions =
@@ -71,9 +127,45 @@ async fn upgrading_from_v1_preserves_existing_revisions() {
         .fetch_one(&mut *upgrade)
         .await
         .unwrap();
-    assert_eq!(migration_versions, [1, 2]);
+    let legacy_published_id: i64 =
+        sqlx::query_scalar("SELECT published_id FROM app_event WHERE id = $1")
+            .bind(legacy_event_id)
+            .fetch_one(&mut *upgrade)
+            .await
+            .unwrap();
+    let schedules = sqlx::query_as::<_, (uuid::Uuid, time::OffsetDateTime)>(
+        r#"
+        SELECT id, next_run_at
+        FROM subscription
+        WHERE id = ANY($1)
+        "#,
+    )
+    .bind([created_only_id, last_run_id, scheduled_id, disabled_id])
+    .fetch_all(&mut *upgrade)
+    .await
+    .unwrap()
+    .into_iter()
+    .collect::<std::collections::HashMap<_, _>>();
+    assert_eq!(migration_versions, [1, 2, 3, 4]);
     assert_eq!(preserved_title, "迁移前修订");
     assert_eq!(source_count, 0);
+    assert_eq!(legacy_published_id, legacy_event_id);
+    assert_eq!(
+        schedules[&created_only_id],
+        time::macros::datetime!(2026-09-01 1:00 UTC)
+    );
+    assert_eq!(
+        schedules[&last_run_id],
+        time::macros::datetime!(2026-09-02 0:30 UTC)
+    );
+    assert_eq!(
+        schedules[&scheduled_id],
+        time::macros::datetime!(2026-09-04 0:00 UTC)
+    );
+    assert_eq!(
+        schedules[&disabled_id],
+        time::macros::datetime!(2026-09-03 2:00 UTC)
+    );
 
     sqlx::query("SET search_path TO public")
         .execute(&mut *upgrade)
@@ -98,7 +190,7 @@ async fn initial_migration_creates_the_complete_schema() {
             .fetch_all(&pool)
             .await
             .unwrap();
-    assert_eq!(migration_versions, [1, 2]);
+    assert_eq!(migration_versions, [1, 2, 3, 4]);
 
     let tables = sqlx::query_scalar::<_, String>(
         r#"
@@ -119,6 +211,7 @@ async fn initial_migration_creates_the_complete_schema() {
             "admin_session",
             "administrator",
             "app_event",
+            "app_event_publication_cursor",
             "artist",
             "bookmark_writeback_command",
             "deletion_marker",
@@ -175,19 +268,30 @@ async fn initial_migration_creates_the_complete_schema() {
     .unwrap();
     assert_eq!(reservation_delete_rule, "RESTRICT");
 
-    let event_id_type: String = sqlx::query_scalar(
+    let event_id_columns = sqlx::query_as::<_, (String, String, String)>(
         r#"
-        SELECT data_type
+        SELECT column_name, data_type, is_nullable
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'app_event'
-          AND column_name = 'id'
+          AND column_name IN ('id', 'published_id')
+        ORDER BY column_name
         "#,
     )
-    .fetch_one(&pool)
+    .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(event_id_type, "bigint");
+    assert_eq!(
+        event_id_columns,
+        [
+            ("id".to_owned(), "bigint".to_owned(), "NO".to_owned()),
+            (
+                "published_id".to_owned(),
+                "bigint".to_owned(),
+                "YES".to_owned()
+            ),
+        ]
+    );
 
     let immutable_rule_version_triggers: i64 = sqlx::query_scalar(
         r#"
@@ -357,7 +461,7 @@ async fn initial_migration_creates_the_complete_schema() {
             ),
             (
                 "next_run_at".to_owned(),
-                "YES".to_owned(),
+                "NO".to_owned(),
                 "timestamp with time zone".to_owned()
             ),
             (

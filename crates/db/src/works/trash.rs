@@ -124,10 +124,9 @@ impl WorkRepository {
 
         let row = query.build().fetch_one(&mut *tx).await?;
         let affected_count = row.try_get::<i64, _>("affected_count")?;
-        let latest_event_id = row.try_get::<Option<i64>, _>("latest_event_id")?;
-        if let Some(latest_event_id) = latest_event_id {
-            sqlx::query("SELECT pg_notify('pixivarchive_events', $1)")
-                .bind(latest_event_id.to_string())
+        let event_inserted = row.try_get::<Option<i64>, _>("latest_event_id")?.is_some();
+        if event_inserted {
+            sqlx::query("SELECT pg_notify('pixivarchive_events', '')")
                 .execute(&mut *tx)
                 .await?;
         }
@@ -644,9 +643,8 @@ impl WorkRepository {
         let affected_count =
             nonnegative_u64(row.try_get("affected_count")?, "restored trash count")?;
         let mutation = selection.mutation(affected_count);
-        if let Some(event_id) = row.try_get::<Option<i64>, _>("latest_event_id")? {
-            sqlx::query("SELECT pg_notify('pixivarchive_events', $1)")
-                .bind(event_id.to_string())
+        if row.try_get::<Option<i64>, _>("latest_event_id")?.is_some() {
+            sqlx::query("SELECT pg_notify('pixivarchive_events', '')")
                 .execute(&mut *tx)
                 .await?;
         }

@@ -5207,13 +5207,6 @@
           "name": {
             "type": "string"
           },
-          "next_run_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
-          },
           "params": {
             "type": "object",
             "additionalProperties": {},
@@ -9147,10 +9140,7 @@
             "type": "string"
           },
           "next_run_at": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": "string",
             "format": "date-time"
           },
           "params": {
@@ -10315,13 +10305,6 @@
           },
           "name": {
             "type": "string"
-          },
-          "next_run_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
           },
           "params": {
             "type": "object",

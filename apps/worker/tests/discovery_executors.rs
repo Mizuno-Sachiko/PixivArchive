@@ -10,7 +10,7 @@ use pixivarchive_domain::{
     job::JobKind,
     pixiv::{PixivBookmarksMode, PixivFollowLatestMode, PixivRankingContent, PixivRankingMode},
 };
-use pixivarchive_pixiv::{PixivErrorClass, PixivRequestContext};
+use pixivarchive_pixiv::{PixivEndpoint, PixivError, PixivErrorClass, PixivRequestContext};
 use pixivarchive_test_support::{
     FakePixivGateway, configure_bookmarks_subscription, configure_following_subscription, context,
     discovery_work, ranking_entry,
@@ -60,7 +60,6 @@ async fn worker_executes_ranking_collection_unit_and_completes_job() {
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -82,6 +81,51 @@ async fn worker_executes_ranking_collection_unit_and_completes_job() {
 }
 
 #[tokio::test]
+async fn ranking_collection_preserves_pixiv_retry_after() {
+    let locked = LockedDb::new().await;
+    let gateway = FakePixivGateway::new();
+    gateway.fail_ranking_with(
+        PixivError::new(PixivErrorClass::RateLimited, Some(PixivEndpoint::Ranking))
+            .with_retry_after(Duration::seconds(600)),
+    );
+    let account = account(&locked, gateway.clone()).await;
+    let subscription = SubscriptionService::new(locked.db.clone())
+        .create_ranking(RankingSubscriptionRequest {
+            account_id: account.id,
+            name: "rate limited ranking".to_owned(),
+            modes: vec![PixivRankingMode::Daily],
+            contents: vec![PixivRankingContent::All],
+            interval_minutes: 60,
+            lookback_pages: 0,
+            rule_id: None,
+        })
+        .await
+        .unwrap();
+    SubscriptionService::new(locked.db.clone())
+        .start_manual_run(subscription.id, false)
+        .await
+        .unwrap();
+    let runtime = WorkerRuntime::new(
+        JobService::new(locked.db.clone()),
+        pixiv_registry(&locked, gateway),
+        test_config(),
+    );
+    let mut rotation = scheduler::default_rotation();
+    let before = time::OffsetDateTime::now_utc();
+
+    assert!(runtime.process_once(&mut rotation).await.unwrap());
+
+    let next_retry_at: time::OffsetDateTime =
+        sqlx::query_scalar("SELECT next_retry_at FROM job WHERE kind = $1")
+            .bind(JobKind::RankingCollection.as_str())
+            .fetch_one(locked.db.pool())
+            .await
+            .unwrap();
+    assert!(next_retry_at >= before + Duration::seconds(590));
+    assert!(next_retry_at <= time::OffsetDateTime::now_utc() + Duration::seconds(610));
+}
+
+#[tokio::test]
 async fn ranking_collection_recovers_business_state_after_a_retryable_failure() {
     let locked = LockedDb::new().await;
     let gateway = FakePixivGateway::new();
@@ -97,7 +141,6 @@ async fn ranking_collection_recovers_business_state_after_a_retryable_failure() 
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -151,7 +194,6 @@ async fn ranking_collection_replay_completes_without_repeating_a_succeeded_unit(
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -199,7 +241,6 @@ async fn ranking_collection_finishes_failed_after_retry_exhaustion() {
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();

@@ -1,5 +1,4 @@
 use super::*;
-use time::Duration;
 
 macro_rules! subscription_projection {
     () => {
@@ -29,7 +28,10 @@ impl SubscriptionRepository {
             ));
         }
         validate_subscription_params(input.kind, &input.params)?;
-        let schedule = subscription_schedule_value(input.interval_minutes, input.lookback_pages)?;
+        let schedule = subscription_schedule(input.interval_minutes, input.lookback_pages)?;
+        let next_run_at = schedule
+            .first_run_after(input.scheduled_from)
+            .map_err(|error| DbError::InvalidValue(error.to_string()))?;
         let mut tx = self.db.begin().await?;
         let row = sqlx::query(concat!(
             r#"
@@ -45,9 +47,9 @@ impl SubscriptionRepository {
         .bind(input.rule_id)
         .bind(input.name.trim())
         .bind(input.kind.as_str())
-        .bind(Json(schedule))
+        .bind(Json(schedule.to_value()))
         .bind(Json(input.params))
-        .bind(input.next_run_at)
+        .bind(next_run_at)
         .fetch_one(&mut *tx)
         .await?;
         let record = subscription_from_row(&row)?;
@@ -296,7 +298,10 @@ impl SubscriptionRepository {
                 "subscription name is required".to_owned(),
             ));
         }
-        let schedule = subscription_schedule_value(input.interval_minutes, input.lookback_pages)?;
+        let schedule = subscription_schedule(input.interval_minutes, input.lookback_pages)?;
+        let next_run_at = schedule
+            .first_run_after(input.changed_at)
+            .map_err(|error| DbError::InvalidValue(error.to_string()))?;
         let mut tx = self.db.begin().await?;
         let kind_value: String =
             sqlx::query_scalar("SELECT kind FROM subscription WHERE id = $1 FOR UPDATE")
@@ -316,7 +321,12 @@ impl SubscriptionRepository {
                 enabled = $6,
                 schedule = $7,
                 params = $8,
-                next_run_at = $9,
+                next_run_at = CASE
+                    WHEN schedule ->> 'interval_minutes'
+                         IS DISTINCT FROM $7::jsonb ->> 'interval_minutes'
+                    THEN $9
+                    ELSE next_run_at
+                END,
                 updated_at = now(),
                 revision = revision + 1
             WHERE id = $1
@@ -330,9 +340,9 @@ impl SubscriptionRepository {
         .bind(input.rule_id)
         .bind(input.name.trim())
         .bind(input.enabled)
-        .bind(Json(schedule))
+        .bind(Json(schedule.to_value()))
         .bind(Json(input.params))
-        .bind(input.next_run_at)
+        .bind(next_run_at)
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(DbError::RevisionConflict)?;
@@ -464,12 +474,10 @@ impl SubscriptionRepository {
                 "synchronization interval must be between 15 and 1440 minutes".to_owned(),
             ));
         }
-        let schedule = subscription_schedule_value(interval_minutes, lookback_pages)?;
-        let next_run_at = changed_at
-            .checked_add(Duration::minutes(interval_minutes))
-            .ok_or_else(|| {
-                DbError::InvalidValue("synchronization next run time is out of range".to_owned())
-            })?;
+        let schedule = subscription_schedule(interval_minutes, lookback_pages)?;
+        let next_run_at = schedule
+            .first_run_after(changed_at)
+            .map_err(|error| DbError::InvalidValue(error.to_string()))?;
         let mut tx = self.db.begin().await?;
         let row = sqlx::query(concat!(
             r#"
@@ -488,7 +496,7 @@ impl SubscriptionRepository {
         .bind(account_id)
         .bind(expected_revision)
         .bind(enabled)
-        .bind(Json(schedule))
+        .bind(Json(schedule.to_value()))
         .bind(next_run_at)
         .bind(kind.as_str())
         .fetch_optional(&mut *tx)

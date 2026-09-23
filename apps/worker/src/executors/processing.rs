@@ -92,7 +92,11 @@ pub(super) struct TemporarySource {
 
 impl Drop for TemporarySource {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        if let Err(error) = std::fs::remove_file(&self.path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(error = %error, "temporary media source could not be removed");
+        }
     }
 }
 
@@ -107,18 +111,21 @@ pub(super) enum PrepareSourceError {
 
 pub(super) struct MediaProcessingFailure {
     error_class: JobErrorClass,
+    message: String,
 }
 
 impl MediaProcessingFailure {
-    pub(super) fn permanent() -> Self {
+    pub(super) fn permanent(message: impl Into<String>) -> Self {
         Self {
             error_class: JobErrorClass::Permanent,
+            message: message.into(),
         }
     }
 
-    pub(super) fn server() -> Self {
+    pub(super) fn server(message: impl Into<String>) -> Self {
         Self {
             error_class: JobErrorClass::Server,
+            message: message.into(),
         }
     }
 
@@ -126,13 +133,18 @@ impl MediaProcessingFailure {
         self.error_class
     }
 
+    pub(super) fn message(&self) -> &str {
+        &self.message
+    }
+
     pub(super) fn database(error: DbError) -> Self {
+        let message = format!("媒体数据库操作失败：{error}");
         match error {
             DbError::Connection(_)
             | DbError::Query(_)
             | DbError::LeaseConflict
-            | DbError::RevisionConflict => Self::server(),
-            _ => Self::permanent(),
+            | DbError::RevisionConflict => Self::server(message),
+            _ => Self::permanent(message),
         }
     }
 
@@ -141,19 +153,22 @@ impl MediaProcessingFailure {
             PrepareSourceError::Worker
             | PrepareSourceError::MediaPath(MediaPathError::Io { .. })
             | PrepareSourceError::MediaPath(MediaPathError::Worker(_))
-            | PrepareSourceError::Ugoira(UgoiraError::Archive) => Self::server(),
-            PrepareSourceError::MissingUgoiraMetadata
-            | PrepareSourceError::UnsupportedMediaKind
-            | PrepareSourceError::UnsupportedFrame
-            | PrepareSourceError::MediaPath(_)
-            | PrepareSourceError::Ugoira(_) => Self::permanent(),
+            | PrepareSourceError::Ugoira(UgoiraError::Archive) => {
+                Self::server("媒体源文件暂时无法读取")
+            }
+            PrepareSourceError::MissingUgoiraMetadata => Self::permanent("动图缺少帧元数据"),
+            PrepareSourceError::UnsupportedMediaKind => Self::permanent("媒体类型不支持派生处理"),
+            PrepareSourceError::UnsupportedFrame => Self::permanent("动图帧格式不支持派生处理"),
+            PrepareSourceError::MediaPath(_) => Self::permanent("媒体路径无效"),
+            PrepareSourceError::Ugoira(_) => Self::permanent("动图源文件无法解析"),
         }
     }
 
     pub(super) fn derivative(error: DerivativeError) -> Self {
+        let message = format!("派生图生成失败：{error}");
         match error {
-            DerivativeError::Process | DerivativeError::Storage => Self::server(),
-            _ => Self::permanent(),
+            DerivativeError::Process | DerivativeError::Storage => Self::server(message),
+            _ => Self::permanent(message),
         }
     }
 }

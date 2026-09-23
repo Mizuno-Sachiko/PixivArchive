@@ -9,7 +9,7 @@ where
         ownership: UnitExecutionOwnership,
         context: &PixivRequestContext,
         unit: &pixivarchive_db::SubscriptionRunUnitRecord,
-    ) -> Result<ExecutedPage, JobErrorClass> {
+    ) -> Result<ExecutedPage, JobExecutionFailure> {
         let mode = enum_field::<PixivRankingMode>(&unit.params_snapshot, "mode")?;
         let content = enum_field::<PixivRankingContent>(&unit.params_snapshot, "content")?;
         let page_size = page_size(&unit.params_snapshot, 50);
@@ -57,7 +57,7 @@ where
                             error = %error,
                             "Pixiv ranking request failed"
                         );
-                        pixiv_error_class(error.class())
+                        JobExecutionFailure::pixiv(error)
                     })?;
                 period_date = response.value.date.or(period_date);
                 latest_date = latest_date.or(period_date);
@@ -115,7 +115,7 @@ where
                                         .await
                                 }
                             }
-                            .map_err(|error| database_error_class(&error))?;
+                            .map_err(|error| JobExecutionFailure::database(&error))?;
                             if recorded {
                                 discovered += 1;
                             }
@@ -130,7 +130,7 @@ where
                                 error = ?error,
                                 "Pixiv ranking work processing failed"
                             );
-                            return Err(error.error_class());
+                            return Err(processing_failure(error));
                         }
                     }
                 }
@@ -152,7 +152,7 @@ where
             page: 1,
         })
         .map(Some)
-        .map_err(|_| JobErrorClass::Permanent)?;
+        .map_err(|_| JobExecutionFailure::from(JobErrorClass::Permanent))?;
         Ok(ExecutedPage {
             discovered_count: discovered,
             ignored_count: ignored,

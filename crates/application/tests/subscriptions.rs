@@ -17,7 +17,7 @@ use pixivarchive_test_support::{
 };
 use serde_json::{Value, json};
 use sqlx::Row;
-use time::{Date, Month};
+use time::{Date, Duration, Month, OffsetDateTime};
 
 #[tokio::test]
 async fn ranking_subscription_requires_an_existing_account() {
@@ -33,7 +33,6 @@ async fn ranking_subscription_requires_an_existing_account() {
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap_err();
@@ -55,7 +54,6 @@ async fn ranking_subscription_creation_emits_its_initial_revision() {
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -80,6 +78,84 @@ async fn ranking_subscription_creation_emits_its_initial_revision() {
             "revision": subscription.revision,
         }))
     );
+}
+
+#[tokio::test]
+async fn server_owns_the_ranking_subscription_schedule() {
+    let locked = LockedDb::new(DISCOVERY_LOCK_ID).await;
+    let account = account(&locked, FakePixivGateway::new()).await;
+    let service = SubscriptionService::new(locked.db.clone());
+    let create_started = OffsetDateTime::now_utc();
+    let created = service
+        .create_ranking(RankingSubscriptionRequest {
+            account_id: account.id,
+            name: "daily".to_owned(),
+            modes: vec![PixivRankingMode::Daily],
+            contents: vec![PixivRankingContent::All],
+            interval_minutes: 60,
+            lookback_pages: 1,
+            rule_id: None,
+        })
+        .await
+        .unwrap();
+    let create_finished = OffsetDateTime::now_utc();
+
+    assert!(created.next_run_at >= create_started + Duration::hours(1));
+    assert!(created.next_run_at <= create_finished + Duration::hours(1));
+
+    let renamed = service
+        .update(
+            created.id,
+            created.revision,
+            created.enabled,
+            SubscriptionUpdateRequest {
+                account_id: created.account_id,
+                rule_id: created.rule_id,
+                name: "renamed daily".to_owned(),
+                interval_minutes: 60,
+                lookback_pages: 2,
+                params: created.params.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(renamed.next_run_at, created.next_run_at);
+
+    let update_started = OffsetDateTime::now_utc();
+    let rescheduled = service
+        .update(
+            renamed.id,
+            renamed.revision,
+            renamed.enabled,
+            SubscriptionUpdateRequest {
+                account_id: renamed.account_id,
+                rule_id: renamed.rule_id,
+                name: renamed.name.clone(),
+                interval_minutes: 120,
+                lookback_pages: 2,
+                params: renamed.params.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let update_finished = OffsetDateTime::now_utc();
+    assert!(rescheduled.next_run_at >= update_started + Duration::hours(2));
+    assert!(rescheduled.next_run_at <= update_finished + Duration::hours(2));
+
+    service
+        .start_manual_run(rescheduled.id, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        service.get(rescheduled.id).await.unwrap().next_run_at,
+        rescheduled.next_run_at
+    );
+
+    let null_schedule = sqlx::query("UPDATE subscription SET next_run_at = NULL WHERE id = $1")
+        .bind(rescheduled.id)
+        .execute(locked.db.pool())
+        .await;
+    assert!(null_schedule.is_err());
 }
 
 #[tokio::test]
@@ -119,7 +195,6 @@ async fn stale_page_cannot_create_a_ranking_subscription_for_the_previous_accoun
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: None,
-            next_run_at: None,
         })
         .await;
 
@@ -141,7 +216,6 @@ async fn subscription_schedule_limits_apply_to_create_and_update() {
             interval_minutes: 60,
             lookback_pages: 2,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -155,7 +229,6 @@ async fn subscription_schedule_limits_apply_to_create_and_update() {
             interval_minutes: 14,
             lookback_pages: 2,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap_err();
@@ -173,7 +246,6 @@ async fn subscription_schedule_limits_apply_to_create_and_update() {
                 interval_minutes: 43_201,
                 lookback_pages: 8,
                 params: subscription.params.clone(),
-                next_run_at: subscription.next_run_at,
             },
         )
         .await
@@ -200,7 +272,6 @@ async fn subscription_enabled_state_is_updated_through_one_shared_command() {
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -239,7 +310,6 @@ async fn ranking_subscription_expands_every_mode_and_content_into_independent_jo
             interval_minutes: 60,
             lookback_pages: 2,
             rule_id: None,
-            next_run_at: Some(time::OffsetDateTime::now_utc() - time::Duration::minutes(1)),
         })
         .await
         .unwrap();
@@ -297,7 +367,6 @@ async fn cursor_advances_after_success_and_failed_run_preserves_previous_cursor(
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -358,7 +427,6 @@ async fn backfill_cursor_is_independent_and_overlapping_triggers_are_merged() {
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();

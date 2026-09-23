@@ -8,9 +8,9 @@ use pixivarchive_domain::{
     rule::{RuleDefinitionV1, RuleError},
     subscription::{ImportKind, ImportRunStatus},
 };
-use pixivarchive_pixiv::{PixivErrorClass, PixivRequestContext};
+use pixivarchive_pixiv::{PixivError, PixivRequestContext};
 use thiserror::Error;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 #[derive(Clone, Debug)]
@@ -155,17 +155,19 @@ pub struct ImportResult {
 pub struct ImportAttemptResult {
     pub result: ImportResult,
     pub error_class: Option<JobErrorClass>,
+    pub retry_after: Option<Duration>,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Error)]
 pub enum ImportServiceError {
-    #[error("import storage failed")]
+    #[error("import storage failed: {0}")]
     Storage(#[from] DbError),
-    #[error("pixiv request failed")]
-    Pixiv(JobErrorClass),
-    #[error("Pixiv work processing failed")]
+    #[error("pixiv request failed: {0}")]
+    Pixiv(PixivError),
+    #[error("Pixiv work processing failed: {0}")]
     Processing(#[from] PixivWorkProcessingError),
-    #[error("stored import rule is invalid")]
+    #[error("stored import rule is invalid: {0}")]
     RuleDocument(#[from] RuleError),
 }
 
@@ -182,14 +184,18 @@ pub enum ImportQueueError {
 impl ImportServiceError {
     pub fn error_class(&self) -> JobErrorClass {
         match self {
-            Self::Pixiv(error_class) => *error_class,
+            Self::Pixiv(error) => crate::jobs::pixiv_error_class(error.class()),
             Self::Processing(error) => error.error_class(),
             Self::Storage(error) => crate::jobs::database_error_class(error),
             Self::RuleDocument(_) => JobErrorClass::Permanent,
         }
     }
-}
 
-pub(super) fn pixiv_error_class(class: PixivErrorClass) -> JobErrorClass {
-    crate::jobs::pixiv_error_class(class)
+    pub fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Pixiv(error) => error.retry_after(),
+            Self::Processing(error) => error.retry_after(),
+            Self::Storage(_) | Self::RuleDocument(_) => None,
+        }
+    }
 }

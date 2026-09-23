@@ -41,50 +41,52 @@ impl EventRepository {
         resource: EventResource,
         resource_id: Uuid,
         payload: EventPayload,
-    ) -> Result<AppEvent, DbError> {
+    ) -> Result<(), DbError> {
         let payload_json = serde_json::to_value(&payload)
             .map_err(|error| DbError::InvalidValue(error.to_string()))?;
-        let row = sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO app_event (resource, resource_id, payload)
             VALUES ($1, $2, $3)
-            RETURNING id, resource, resource_id, payload as "payload: Json<serde_json::Value>"
             "#,
-            resource.as_str(),
-            resource_id,
-            payload_json
         )
-        .fetch_one(&mut **tx)
-        .await?;
-
-        let event_id = row.id;
-        sqlx::query!(
-            "SELECT pg_notify('pixivarchive_events', $1)",
-            event_id.to_string()
-        )
+        .bind(resource.as_str())
+        .bind(resource_id)
+        .bind(payload_json)
         .execute(&mut **tx)
         .await?;
 
-        event_from_row(row.id, row.resource, row.resource_id, row.payload.0)
+        sqlx::query("SELECT pg_notify('pixivarchive_events', '')")
+            .execute(&mut **tx)
+            .await?;
+        Ok(())
     }
 
     pub async fn list_after(&self, event_id: i64, limit: i64) -> Result<Vec<AppEvent>, DbError> {
-        let rows = sqlx::query!(
+        self.publish_pending().await?;
+        let rows = sqlx::query(
             r#"
-            SELECT id, resource, resource_id, payload as "payload: Json<serde_json::Value>"
+            SELECT published_id, resource, resource_id, payload
             FROM app_event
-            WHERE id > $1
-            ORDER BY id
+            WHERE published_id > $1
+            ORDER BY published_id
             LIMIT $2
             "#,
-            event_id,
-            limit
         )
+        .bind(event_id)
+        .bind(limit)
         .fetch_all(self.db.pool())
         .await?;
 
         rows.into_iter()
-            .map(|row| event_from_row(row.id, row.resource, row.resource_id, row.payload.0))
+            .map(|row| {
+                event_from_row(
+                    row.get("published_id"),
+                    row.get("resource"),
+                    row.get("resource_id"),
+                    row.get::<Json<serde_json::Value>, _>("payload").0,
+                )
+            })
             .collect()
     }
 
@@ -99,10 +101,13 @@ impl EventRepository {
             ));
         }
 
+        self.publish_pending().await?;
         let boundary = sqlx::query(
             r#"
-            SELECT min(id) AS oldest_event_id, max(id) AS latest_event_id
+            SELECT min(published_id) AS oldest_event_id,
+                   max(published_id) AS latest_event_id
             FROM app_event
+            WHERE published_id IS NOT NULL
             "#,
         )
         .fetch_one(self.db.pool())
@@ -141,24 +146,31 @@ impl EventRepository {
         }
 
         let effective_limit = limit.min(MAX_REPLAY_LIMIT);
-        let rows = sqlx::query!(
+        let rows = sqlx::query(
             r#"
-            SELECT id, resource, resource_id, payload as "payload: Json<serde_json::Value>"
+            SELECT published_id, resource, resource_id, payload
             FROM app_event
-            WHERE id > $1
-            ORDER BY id
+            WHERE published_id > $1
+            ORDER BY published_id
             LIMIT $2
             "#,
-            requested_id,
-            effective_limit + 1
         )
+        .bind(requested_id)
+        .bind(effective_limit + 1)
         .fetch_all(self.db.pool())
         .await?;
         let has_more = rows.len() as i64 > effective_limit;
         let events = rows
             .into_iter()
             .take(effective_limit as usize)
-            .map(|row| event_from_row(row.id, row.resource, row.resource_id, row.payload.0))
+            .map(|row| {
+                event_from_row(
+                    row.get("published_id"),
+                    row.get("resource"),
+                    row.get("resource_id"),
+                    row.get::<Json<serde_json::Value>, _>("payload").0,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(EventReplayWindow {
@@ -168,6 +180,69 @@ impl EventRepository {
             snapshot_refresh: false,
             has_more,
         })
+    }
+
+    async fn publish_pending(&self) -> Result<(), DbError> {
+        let has_pending: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM app_event WHERE published_id IS NULL)")
+                .fetch_one(self.db.pool())
+                .await?;
+        if !has_pending {
+            return Ok(());
+        }
+
+        let mut tx = self.db.begin().await?;
+        let mut published_id: i64 = sqlx::query_scalar(
+            r#"
+            SELECT last_published_id
+            FROM app_event_publication_cursor
+            WHERE singleton = true
+            FOR UPDATE
+            "#,
+        )
+        .fetch_one(&mut *tx)
+        .await?;
+        let event_ids = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT id
+            FROM app_event
+            WHERE published_id IS NULL
+            ORDER BY id
+            FOR UPDATE
+            "#,
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        if event_ids.is_empty() {
+            tx.commit().await?;
+            return Ok(());
+        }
+        for event_id in event_ids {
+            published_id = published_id
+                .checked_add(1)
+                .ok_or_else(|| DbError::InvalidValue("event publication id overflow".to_owned()))?;
+            sqlx::query("UPDATE app_event SET published_id = $2 WHERE id = $1")
+                .bind(event_id)
+                .bind(published_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        sqlx::query(
+            r#"
+            UPDATE app_event_publication_cursor
+            SET last_published_id = $1
+            WHERE singleton = true
+            "#,
+        )
+        .bind(published_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query("SELECT pg_notify('pixivarchive_events', $1)")
+            .bind(published_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(())
     }
 }
 

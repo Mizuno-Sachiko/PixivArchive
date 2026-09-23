@@ -358,6 +358,16 @@ pub struct JobLease {
     pub lease_owner: Uuid,
 }
 
+/// The current database observation of one execution attempt's write authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JobLeaseStatus {
+    Active,
+    Completed,
+    Cancelled,
+    Superseded,
+    Expired,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JobQuotaSelection {
     priorities: Vec<JobPriority>,

@@ -17,6 +17,7 @@ where
         let mut status = DomainRunStatus::Succeeded;
         let mut error_class = None;
         let mut error_message = None;
+        let mut retry_after = None;
         for unit in units {
             let result = self
                 .execute_unit(SubscriptionUnitRequest {
@@ -31,6 +32,7 @@ where
                 if error_class.is_none() {
                     error_class = result.error_class;
                     error_message = result.error_message;
+                    retry_after = result.retry_after;
                 }
             }
         }
@@ -40,6 +42,7 @@ where
             ignored_count,
             error_class,
             error_message,
+            retry_after,
         })
     }
 
@@ -136,19 +139,19 @@ where
                         ignored_count: executed.ignored_count,
                         error_class: None,
                         error_message: None,
+                        retry_after: None,
                     },
                     completion: Some(completion),
                 })
             }
-            Err(error_class) => {
-                let error_message = subscription_error_message(error_class).to_owned();
+            Err(failure) => {
                 match ownership {
                     UnitExecutionOwnership::Synchronous => {
                         self.repository
                             .record_unit_attempt_failure(
                                 unit.id,
-                                error_class.as_str(),
-                                Some(&error_message),
+                                failure.error_class.as_str(),
+                                Some(&failure.message),
                             )
                             .await?;
                     }
@@ -157,8 +160,8 @@ where
                             .record_unit_attempt_failure_job(
                                 lease,
                                 unit.id,
-                                error_class.as_str(),
-                                Some(&error_message),
+                                failure.error_class.as_str(),
+                                Some(&failure.message),
                             )
                             .await?;
                     }
@@ -168,8 +171,9 @@ where
                         status: DomainRunStatus::Failed,
                         discovered_count: 0,
                         ignored_count: 0,
-                        error_class: Some(error_class.as_str().to_owned()),
-                        error_message: Some(error_message),
+                        error_class: Some(failure.error_class.as_str().to_owned()),
+                        error_message: Some(failure.message),
+                        retry_after: failure.retry_after,
                     },
                     completion: None,
                 })

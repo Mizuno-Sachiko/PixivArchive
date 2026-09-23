@@ -816,7 +816,6 @@ async fn saved_cookie_can_be_revalidated_without_reentering_it() {
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -859,7 +858,6 @@ async fn r18_probe_runs_only_when_an_enabled_r18_subscription_exists() {
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -875,7 +873,7 @@ async fn invalid_cookie_blocks_dependent_jobs_and_pauses_due_scheduling() {
     let accounts = PixivAccountService::new(locked.db.clone(), gateway.clone());
     let saved = accounts.update_cookie(valid_cookie_update()).await.unwrap();
     let subscriptions = SubscriptionService::new(locked.db.clone());
-    subscriptions
+    let due_subscription = subscriptions
         .create_ranking(RankingSubscriptionRequest {
             account_id: saved.id,
             name: "due ranking".to_owned(),
@@ -884,8 +882,12 @@ async fn invalid_cookie_blocks_dependent_jobs_and_pauses_due_scheduling() {
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: None,
-            next_run_at: Some(time::OffsetDateTime::now_utc() - time::Duration::minutes(1)),
         })
+        .await
+        .unwrap();
+    sqlx::query("UPDATE subscription SET next_run_at = now() - interval '1 minute' WHERE id = $1")
+        .bind(due_subscription.id)
+        .execute(locked.db.pool())
         .await
         .unwrap();
 
@@ -940,7 +942,6 @@ async fn restricted_account_returns_to_normal_and_releases_waiting_jobs() {
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -985,7 +986,6 @@ async fn successful_cookie_update_releases_waiting_jobs_and_merges_one_catchup_p
             interval_minutes: 60,
             lookback_pages: 2,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();

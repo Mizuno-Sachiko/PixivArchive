@@ -109,6 +109,7 @@ impl SubscriptionRepository {
         .bind(expected_job_id)
         .fetch_optional(&mut **tx)
         .await?;
+        let unit_started = updated_run_id.is_some();
         let run_id = if let Some(run_id) = updated_run_id {
             run_id
         } else {
@@ -141,6 +142,14 @@ impl SubscriptionRepository {
         .bind(run_id)
         .execute(&mut **tx)
         .await?;
+        if unit_started {
+            let subscription_id: Uuid =
+                sqlx::query_scalar("SELECT subscription_id FROM subscription_run WHERE id = $1")
+                    .bind(run_id)
+                    .fetch_one(&mut **tx)
+                    .await?;
+            append_subscription_event(&self.db, tx, subscription_id).await?;
+        }
         Ok(())
     }
 
@@ -523,7 +532,15 @@ impl SubscriptionRepository {
             SELECT sum(discovered_count)::int AS discovered_count,
                    sum(ignored_count)::int AS ignored_count,
                    bool_or(state = 'failed') AS any_failed,
-                   bool_or(state = 'cancelled') AS any_cancelled
+                   bool_or(state = 'cancelled') AS any_cancelled,
+                   (
+                       SELECT error_class
+                       FROM subscription_run_unit failed_unit
+                       WHERE failed_unit.subscription_run_id = $1
+                         AND failed_unit.state = 'failed'
+                       ORDER BY failed_unit.source_key, failed_unit.id
+                       LIMIT 1
+                   ) AS error_class
             FROM subscription_run_unit
             WHERE subscription_run_id = $1
             "#,
@@ -543,6 +560,7 @@ impl SubscriptionRepository {
         let any_cancelled = aggregate
             .get::<Option<bool>, _>("any_cancelled")
             .unwrap_or(false);
+        let error_class: Option<String> = aggregate.get("error_class");
         let parent_state = if any_failed {
             "failed"
         } else if any_cancelled {
@@ -556,7 +574,8 @@ impl SubscriptionRepository {
             SET state = $2,
                 finished_at = now(),
                 discovered_count = $3,
-                ignored_count = $4
+                ignored_count = $4,
+                error_class = $5
             WHERE id = $1
             "#,
         )
@@ -564,6 +583,7 @@ impl SubscriptionRepository {
         .bind(parent_state)
         .bind(discovered_count)
         .bind(ignored_count)
+        .bind(error_class)
         .execute(&mut **tx)
         .await?;
 
@@ -666,6 +686,18 @@ impl SubscriptionRepository {
         if updated.rows_affected() != 1 {
             return Err(DbError::RevisionConflict);
         }
+        let subscription_id: Uuid = sqlx::query_scalar(
+            r#"
+            SELECT sr.subscription_id
+            FROM subscription_run_unit u
+            JOIN subscription_run sr ON sr.id = u.subscription_run_id
+            WHERE u.id = $1
+            "#,
+        )
+        .bind(unit_id)
+        .fetch_one(&mut **tx)
+        .await?;
+        append_subscription_event(&self.db, tx, subscription_id).await?;
         Ok(())
     }
 }

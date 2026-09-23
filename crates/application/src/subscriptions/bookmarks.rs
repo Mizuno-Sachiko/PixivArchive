@@ -9,7 +9,7 @@ where
         ownership: UnitExecutionOwnership,
         context: &PixivRequestContext,
         unit: &pixivarchive_db::SubscriptionRunUnitRecord,
-    ) -> Result<ExecutedPage, JobErrorClass> {
+    ) -> Result<ExecutedPage, JobExecutionFailure> {
         let account_id = unit.pixiv_account_id;
         let mode = enum_field::<PixivBookmarksMode>(&unit.params_snapshot, "mode")?;
         let now = OffsetDateTime::now_utc();
@@ -23,7 +23,7 @@ where
             .bookmarks
             .last_full_reconciled_at(account_id)
             .await
-            .map_err(|error| database_error_class(&error))?;
+            .map_err(|error| JobExecutionFailure::database(&error))?;
         let full = unit.cursor_kind == "backfill"
             || last_full.is_none_or(|completed_at| {
                 now - completed_at >= Duration::hours(full_reconcile_hours)
@@ -61,7 +61,7 @@ where
                             error = %error,
                             "Pixiv bookmarks request failed"
                         );
-                        pixiv_error_class(error.class())
+                        JobExecutionFailure::pixiv(error)
                     })?;
                 let next_offset = response.value.next_cursor.map(|cursor| cursor.offset);
                 all_seen_bookmarks.extend(response.value.items.iter().map(|work_id| {
@@ -109,7 +109,7 @@ where
                         .await
                 }
             }
-            .map_err(|error| database_error_class(&error))?;
+            .map_err(|error| JobExecutionFailure::database(&error))?;
         }
         Ok(ExecutedPage {
             discovered_count,

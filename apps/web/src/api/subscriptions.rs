@@ -59,9 +59,8 @@ pub struct SubscriptionDto {
     pub schedule: Value,
     #[schema(value_type = std::collections::BTreeMap<String, Value>)]
     pub params: Value,
-    #[serde(with = "time::serde::rfc3339::option")]
-    #[schema(required)]
-    pub next_run_at: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub next_run_at: OffsetDateTime,
     pub pending_run: bool,
     pub recent_state: SubscriptionRecentState,
     pub revision: i64,
@@ -179,8 +178,6 @@ pub struct CreateSubscriptionBody {
     pub lookback_pages: i64,
     #[schema(value_type = std::collections::BTreeMap<String, Value>)]
     pub params: Value,
-    #[serde(with = "time::serde::rfc3339::option")]
-    pub next_run_at: Option<OffsetDateTime>,
 }
 
 impl CreateSubscriptionBody {
@@ -193,7 +190,6 @@ impl CreateSubscriptionBody {
             interval_minutes: self.interval_minutes,
             lookback_pages: self.lookback_pages,
             params: self.params,
-            next_run_at: self.next_run_at,
         }
     }
 }
@@ -318,8 +314,6 @@ pub struct UpdateSubscriptionBody {
     pub lookback_pages: i64,
     #[schema(value_type = std::collections::BTreeMap<String, Value>)]
     pub params: Value,
-    #[serde(with = "time::serde::rfc3339::option")]
-    pub next_run_at: Option<OffsetDateTime>,
 }
 
 #[derive(Clone, Debug, Deserialize, ToSchema)]
@@ -394,7 +388,6 @@ pub(crate) async fn update(
                 interval_minutes: body.interval_minutes,
                 lookback_pages: body.lookback_pages,
                 params: body.params,
-                next_run_at: body.next_run_at,
             },
         )
         .await?;

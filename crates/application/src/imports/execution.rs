@@ -1,7 +1,7 @@
 use super::{
     model::{
         ImportAttemptResult, ImportRequest, ImportResult, ImportRun, ImportRunSummary,
-        ImportServiceError, pixiv_error_class,
+        ImportServiceError,
     },
     queue::ImportQueueService,
 };
@@ -154,13 +154,23 @@ where
             Ok(result) => Ok(ImportAttemptResult {
                 result,
                 error_class: None,
+                retry_after: None,
+                error_message: None,
             }),
             Err(error) => {
                 let error_class = error.error_class();
+                let retry_after = error.retry_after();
+                let error_message = error.to_string();
                 self.runs
-                    .record_attempt_failure(run_id, error_class.as_str())
+                    .record_attempt_failure(run_id, error_class.as_str(), Some(&error_message))
                     .await?;
-                Ok(Self::failed_attempt(run_id, kind, error_class))
+                Ok(Self::failed_attempt(
+                    run_id,
+                    kind,
+                    error_class,
+                    retry_after,
+                    error_message,
+                ))
             }
         }
     }
@@ -182,13 +192,28 @@ where
             Ok(result) => Ok(ImportAttemptResult {
                 result,
                 error_class: None,
+                retry_after: None,
+                error_message: None,
             }),
             Err(error) => {
                 let error_class = error.error_class();
+                let retry_after = error.retry_after();
+                let error_message = error.to_string();
                 self.runs
-                    .record_job_attempt_failure(lease, run_id, error_class.as_str())
+                    .record_job_attempt_failure(
+                        lease,
+                        run_id,
+                        error_class.as_str(),
+                        Some(&error_message),
+                    )
                     .await?;
-                Ok(Self::failed_attempt(run_id, kind, error_class))
+                Ok(Self::failed_attempt(
+                    run_id,
+                    kind,
+                    error_class,
+                    retry_after,
+                    error_message,
+                ))
             }
         }
     }
@@ -236,6 +261,8 @@ where
         run_id: Uuid,
         kind: ImportKind,
         error_class: pixivarchive_domain::job::JobErrorClass,
+        retry_after: Option<time::Duration>,
+        error_message: String,
     ) -> ImportAttemptResult {
         ImportAttemptResult {
             result: ImportResult {
@@ -246,6 +273,8 @@ where
                 saved_count: 0,
             },
             error_class: Some(error_class),
+            retry_after,
+            error_message: Some(error_message),
         }
     }
 
@@ -260,7 +289,7 @@ where
             .gateway
             .artist_work_ids(&request.context, request.target_pixiv_id)
             .await
-            .map_err(|error| ImportServiceError::Pixiv(pixiv_error_class(error.class())))?
+            .map_err(ImportServiceError::Pixiv)?
             .value
             .work_ids;
         let mut seen = HashSet::new();

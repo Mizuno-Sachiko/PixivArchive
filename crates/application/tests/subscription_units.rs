@@ -43,7 +43,6 @@ async fn ranking_units_execute_independently_and_parent_finishes_after_all_units
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -112,7 +111,6 @@ async fn stale_subscription_worker_cannot_persist_a_successful_pixiv_response() 
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -191,7 +189,6 @@ async fn unit_cursor_advances_atomically_and_failed_unit_preserves_cursor_date()
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -250,7 +247,6 @@ async fn lookback_periods_revisit_previous_dates_and_deduplicate_across_unit() {
             interval_minutes: 60,
             lookback_pages: 2,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -311,7 +307,6 @@ async fn ranking_max_rank_fetches_every_required_page_and_excludes_lower_ranks()
                 "contents": ["all"],
                 "max_rank": 75,
             }),
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -581,7 +576,6 @@ async fn subscription_without_rule_queues_every_discovered_work_for_download() {
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: None,
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -620,7 +614,6 @@ async fn subscription_ignore_rule_writes_no_work_or_ranking_entry() {
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: Some(rule_id),
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -668,7 +661,6 @@ async fn subscription_evaluates_page_metadata_without_downloading_media() {
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: Some(rule_id),
-            next_run_at: None,
         })
         .await
         .unwrap();
@@ -709,7 +701,6 @@ async fn subscription_run_keeps_its_rule_snapshot_after_a_new_version_is_publish
             interval_minutes: 60,
             lookback_pages: 0,
             rule_id: Some(rule_id),
-            next_run_at: None,
         })
         .await
         .unwrap();

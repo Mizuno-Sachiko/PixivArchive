@@ -27,7 +27,7 @@ pub struct SubscriptionView {
     pub enabled: bool,
     pub schedule: Value,
     pub params: Value,
-    pub next_run_at: Option<OffsetDateTime>,
+    pub next_run_at: OffsetDateTime,
     pub pending_run: bool,
     pub recent_state: SubscriptionRecentState,
     pub revision: i64,
@@ -183,7 +183,7 @@ impl SubscriptionService {
                 interval_minutes: request.interval_minutes,
                 lookback_pages: request.lookback_pages,
                 params: request.params,
-                next_run_at: request.next_run_at,
+                scheduled_from: OffsetDateTime::now_utc(),
             })
             .await?;
         self.view(record).await
@@ -209,7 +209,7 @@ impl SubscriptionService {
                 interval_minutes: request.interval_minutes,
                 lookback_pages: request.lookback_pages,
                 params: request.params,
-                next_run_at: request.next_run_at,
+                changed_at: OffsetDateTime::now_utc(),
             })
             .await?;
         self.view(record).await
@@ -258,7 +258,7 @@ impl SubscriptionService {
                 interval_minutes: request.interval_minutes,
                 lookback_pages: request.lookback_pages,
                 params,
-                next_run_at: request.next_run_at,
+                scheduled_from: OffsetDateTime::now_utc(),
             })
             .await?;
         self.view(record).await
@@ -358,7 +358,6 @@ pub struct RankingSubscriptionRequest {
     pub interval_minutes: i64,
     pub lookback_pages: i64,
     pub rule_id: Option<Uuid>,
-    pub next_run_at: Option<OffsetDateTime>,
 }
 
 #[derive(Clone, Debug)]
@@ -370,7 +369,6 @@ pub struct SubscriptionMutationRequest {
     pub interval_minutes: i64,
     pub lookback_pages: i64,
     pub params: Value,
-    pub next_run_at: Option<OffsetDateTime>,
 }
 
 #[derive(Clone, Debug)]
@@ -381,7 +379,6 @@ pub struct SubscriptionUpdateRequest {
     pub interval_minutes: i64,
     pub lookback_pages: i64,
     pub params: Value,
-    pub next_run_at: Option<OffsetDateTime>,
 }
 
 fn reject_fixed_subscription(kind: SubscriptionKind) -> Result<(), DbError> {

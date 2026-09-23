@@ -12,7 +12,7 @@ where
         items: Vec<pixivarchive_domain::pixiv::PixivDiscoveryWork>,
         enabled_artist_ids: Option<&HashSet<i64>>,
         forced: bool,
-    ) -> Result<ExecutedPage, JobErrorClass> {
+    ) -> Result<ExecutedPage, JobExecutionFailure> {
         let mut seen = HashSet::new();
         let mut work_ids = Vec::new();
         let mut filtered_count = 0;
@@ -42,7 +42,7 @@ where
         unit: &pixivarchive_db::SubscriptionRunUnitRecord,
         work_ids: Vec<i64>,
         forced: bool,
-    ) -> Result<ExecutedPage, JobErrorClass> {
+    ) -> Result<ExecutedPage, JobExecutionFailure> {
         self.save_discovery_work_ids_with_policy(ownership, context, unit, work_ids, forced, false)
             .await
             .map(|(page, _)| page)
@@ -56,7 +56,7 @@ where
         work_ids: Vec<i64>,
         forced: bool,
         continue_after_transient_failure: bool,
-    ) -> Result<(ExecutedPage, bool), JobErrorClass> {
+    ) -> Result<(ExecutedPage, bool), JobExecutionFailure> {
         let mut seen = HashSet::new();
         let mut discovered = 0;
         let mut ignored = 0;
@@ -99,9 +99,7 @@ where
                     if continue_after_transient_failure
                         && matches!(
                             error.error_class(),
-                            JobErrorClass::Network
-                                | JobErrorClass::Server
-                                | JobErrorClass::RateLimit
+                            JobErrorClass::Network | JobErrorClass::Server
                         ) =>
                 {
                     tracing::warn!(
@@ -113,7 +111,7 @@ where
                     ignored += 1;
                     retry_pending = true;
                 }
-                Err(error) => return Err(error.error_class()),
+                Err(error) => return Err(processing_failure(error)),
             }
         }
         Ok((

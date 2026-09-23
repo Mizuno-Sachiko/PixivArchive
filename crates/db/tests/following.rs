@@ -191,7 +191,7 @@ fn following_subscription(account_id: uuid::Uuid, name: &str) -> CreateSubscript
         interval_minutes: 60,
         lookback_pages: 1,
         params: json!({ "mode": "all", "source": "following", "language": "zh" }),
-        next_run_at: None,
+        scheduled_from: time::OffsetDateTime::now_utc(),
     }
 }
 

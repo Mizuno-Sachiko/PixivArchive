@@ -105,7 +105,6 @@ async fn full_journey_preserves_rules_media_and_deletion_decisions() {
             interval_minutes: 60,
             lookback_pages: 1,
             rule_id: Some(rule.id),
-            next_run_at: None,
         })
         .await
         .unwrap();

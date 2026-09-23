@@ -72,6 +72,11 @@ impl PixivError {
         self.retry_after
     }
 
+    pub fn with_retry_after(mut self, retry_after: Duration) -> Self {
+        self.retry_after = Some(retry_after.max(Duration::ZERO));
+        self
+    }
+
     pub fn media_integrity(message: impl AsRef<str>) -> Self {
         Self::new(PixivErrorClass::MediaIntegrityFailed, None).with_message(message.as_ref())
     }

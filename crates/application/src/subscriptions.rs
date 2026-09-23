@@ -13,7 +13,7 @@ pub use management::{
 
 pub(crate) const ALLOWED_SYNC_INTERVAL_MINUTES: [i64; 7] = [15, 30, 60, 180, 360, 720, 1_440];
 
-use crate::jobs::{database_error_class, pixiv_error_class};
+use crate::jobs::JobExecutionFailure;
 use crate::{
     following::{FollowingService, FollowingServiceError},
     pixiv_works::{
@@ -87,6 +87,7 @@ pub struct SubscriptionExecutionResult {
     pub ignored_count: i32,
     pub error_class: Option<String>,
     pub error_message: Option<String>,
+    pub retry_after: Option<Duration>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -153,20 +154,18 @@ where
         .map_err(|_| JobErrorClass::Permanent)
 }
 
-fn following_error_class(error: FollowingServiceError) -> JobErrorClass {
+fn following_failure(error: FollowingServiceError) -> JobExecutionFailure {
     match error {
-        FollowingServiceError::Storage(error) => database_error_class(&error),
-        FollowingServiceError::Pixiv(error) => pixiv_error_class(error.class()),
+        FollowingServiceError::Storage(error) => JobExecutionFailure::database(&error),
+        FollowingServiceError::Pixiv(error) => JobExecutionFailure::pixiv(error),
     }
 }
 
-fn subscription_error_message(error_class: JobErrorClass) -> &'static str {
-    match error_class {
-        JobErrorClass::Network => "Pixiv 网络请求失败",
-        JobErrorClass::Server => "Pixiv 服务暂时不可用或响应无法处理",
-        JobErrorClass::RateLimit => "Pixiv 请求频率受限",
-        JobErrorClass::CredentialInvalid => "Pixiv Cookie 已失效",
-        JobErrorClass::Permanent => "来源数据或订阅参数无法处理",
+fn processing_failure(error: crate::pixiv_works::PixivWorkProcessingError) -> JobExecutionFailure {
+    JobExecutionFailure {
+        error_class: error.error_class(),
+        retry_after: error.retry_after(),
+        message: error.to_string(),
     }
 }
 
@@ -206,7 +205,7 @@ fn collection_source_context(
 
 #[cfg(test)]
 mod tests {
-    use super::pixiv_error_class;
+    use crate::jobs::pixiv_error_class;
     use pixivarchive_domain::job::JobErrorClass;
     use pixivarchive_pixiv::PixivErrorClass;
 

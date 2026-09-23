@@ -1,7 +1,7 @@
 use crate::executors::{ExecutorOutcome, JobExecutor};
 use async_trait::async_trait;
 use pixivarchive_application::{
-    jobs::database_error_class,
+    jobs::{JobExecutionFailure, database_error_class},
     pixiv_accounts::{
         PixivAccountContextError, PixivAccountContextFactory, PixivCookieCipherError,
     },
@@ -63,7 +63,11 @@ where
         let result = self.execute_job(job).await;
         match result {
             Ok(outcome) => outcome,
-            Err(error_class) => ExecutorOutcome::failed(error_class, None),
+            Err(failure) => ExecutorOutcome::failed_with_message(
+                failure.error_class,
+                failure.retry_after,
+                failure.message,
+            ),
         }
     }
 }
@@ -72,11 +76,11 @@ impl<G> SubscriptionExecutor<G>
 where
     G: PixivGateway + Clone + 'static,
 {
-    async fn execute_job(&self, job: ClaimedJob) -> Result<ExecutorOutcome, JobErrorClass> {
+    async fn execute_job(&self, job: ClaimedJob) -> Result<ExecutorOutcome, JobExecutionFailure> {
         let unit = SubscriptionRepository::new(self.db.clone())
             .load_unit_by_job(job.id)
             .await
-            .map_err(|error| database_error_class(&error))?;
+            .map_err(|error| JobExecutionFailure::database(&error))?;
         if unit.state == SubscriptionRunStatus::Succeeded {
             return Ok(ExecutorOutcome::completed());
         }
@@ -95,7 +99,14 @@ where
             .context_provider
             .context_for_account(unit.pixiv_account_id)
             .await
-            .map_err(context_error_class)?;
+            .map_err(|error| {
+                let message = error.to_string();
+                JobExecutionFailure {
+                    error_class: context_error_class(error),
+                    retry_after: None,
+                    message,
+                }
+            })?;
         let result = SubscriptionExecutionService::new(self.db.clone(), self.gateway.clone())
             .execute_unit_job_attempt(
                 job.lease(),
@@ -106,15 +117,21 @@ where
                 },
             )
             .await
-            .map_err(|error| database_error_class(&error))?;
+            .map_err(|error| JobExecutionFailure::database(&error))?;
         if let Some(error_class) = result.result.error_class {
             let error_class = job_error_class(&error_class);
             return Ok(match result.result.error_message {
-                Some(message) => ExecutorOutcome::failed_with_message(error_class, None, message),
-                None => ExecutorOutcome::failed(error_class, None),
+                Some(message) => ExecutorOutcome::failed_with_message(
+                    error_class,
+                    result.result.retry_after,
+                    message,
+                ),
+                None => ExecutorOutcome::failed(error_class, result.result.retry_after),
             });
         }
-        let completion = result.completion.ok_or(JobErrorClass::Server)?;
+        let completion = result
+            .completion
+            .ok_or_else(|| JobExecutionFailure::from(JobErrorClass::Server))?;
         Ok(ExecutorOutcome::Completed(JobCompletion::Subscription(
             completion,
         )))

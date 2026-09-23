@@ -167,7 +167,7 @@ async fn configure_fixed_subscription(
             interval_minutes,
             lookback_pages,
             params,
-            next_run_at: current.next_run_at,
+            changed_at: time::OffsetDateTime::now_utc(),
         })
         .await
         .unwrap()
@@ -239,8 +239,11 @@ impl FakePixivGateway {
     }
 
     pub fn fail_ranking(&self, class: PixivErrorClass) {
-        self.state.lock().unwrap().ranking_error =
-            Some(PixivError::new(class, Some(PixivEndpoint::Ranking)));
+        self.fail_ranking_with(PixivError::new(class, Some(PixivEndpoint::Ranking)));
+    }
+
+    pub fn fail_ranking_with(&self, error: PixivError) {
+        self.state.lock().unwrap().ranking_error = Some(error);
     }
 
     pub fn clear_ranking_failure(&self) {

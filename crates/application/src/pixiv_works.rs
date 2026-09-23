@@ -288,31 +288,42 @@ pub enum ProcessedPixivWork {
 
 #[derive(Debug, Error)]
 pub enum PixivWorkProcessingError {
-    #[error("Pixiv work storage failed")]
+    #[error("Pixiv work storage failed: {0}")]
     Storage(#[from] DbError),
-    #[error("Pixiv work request failed")]
-    Pixiv(JobErrorClass),
-    #[error("Pixiv work rule evaluation failed")]
+    #[error("Pixiv work request failed: {0}")]
+    Pixiv(pixivarchive_pixiv::PixivError),
+    #[error("Pixiv work rule evaluation failed: {0}")]
     Rule(#[from] EvaluationError),
 }
 
 impl PixivWorkProcessingError {
     pub fn error_class(&self) -> JobErrorClass {
         match self {
-            Self::Pixiv(error_class) => *error_class,
+            Self::Pixiv(error) => crate::jobs::pixiv_error_class(error.class()),
             Self::Storage(error) => crate::jobs::database_error_class(error),
             Self::Rule(_) => JobErrorClass::Permanent,
         }
     }
 
+    pub fn retry_after(&self) -> Option<time::Duration> {
+        match self {
+            Self::Pixiv(error) => error.retry_after(),
+            Self::Storage(_) | Self::Rule(_) => None,
+        }
+    }
+
     pub fn is_permanent_pixiv(&self) -> bool {
-        matches!(self, Self::Pixiv(JobErrorClass::Permanent))
+        matches!(
+            self,
+            Self::Pixiv(error)
+                if crate::jobs::pixiv_error_class(error.class()) == JobErrorClass::Permanent
+        )
     }
 }
 
 fn pixiv_error(error: pixivarchive_pixiv::PixivError) -> PixivWorkProcessingError {
     tracing::warn!(error = %error, "Pixiv work request failed");
-    PixivWorkProcessingError::Pixiv(crate::jobs::pixiv_error_class(error.class()))
+    PixivWorkProcessingError::Pixiv(error)
 }
 
 fn provenance_json(provenance: Vec<ResponseProvenance>) -> Vec<Value> {

@@ -58,13 +58,13 @@ impl DerivativeExecutor {
             self.storage_write_guard
                 .status()
                 .await
-                .map_err(|_| MediaProcessingFailure::server())?,
+                .map_err(|_| MediaProcessingFailure::server("存储空间状态无法读取"))?,
             StorageWriteStatus::Stopped
         ) {
             return Ok(DerivativeExecutionStatus::WaitingStorage);
         }
         let payload: MediaRevisionPayload = serde_json::from_value(job.payload.clone())
-            .map_err(|_| MediaProcessingFailure::permanent())?;
+            .map_err(|_| MediaProcessingFailure::permanent("派生任务参数无效"))?;
         let media = self
             .repository
             .load_processing_media(payload.media_revision_id)
@@ -93,13 +93,17 @@ impl DerivativeExecutor {
                 ),
                 DerivativeKind::UgoiraCover,
             ),
-            MediaKind::Derivative => return Err(MediaProcessingFailure::permanent()),
+            MediaKind::Derivative => {
+                return Err(MediaProcessingFailure::permanent(
+                    "派生媒体不能再次生成派生图",
+                ));
+            }
         };
-        let base_relative_path =
-            base_relative_path.map_err(|_| MediaProcessingFailure::permanent())?;
+        let base_relative_path = base_relative_path
+            .map_err(|_| MediaProcessingFailure::permanent("派生媒体路径无效"))?;
         let relative_path = if payload.regenerate {
             regeneration_path(&base_relative_path, job.id)
-                .ok_or_else(MediaProcessingFailure::permanent)?
+                .ok_or_else(|| MediaProcessingFailure::permanent("派生媒体路径无效"))?
         } else {
             base_relative_path
         };
@@ -107,7 +111,7 @@ impl DerivativeExecutor {
             self.storage_write_guard
                 .status()
                 .await
-                .map_err(|_| MediaProcessingFailure::server())?,
+                .map_err(|_| MediaProcessingFailure::server("存储空间状态无法读取"))?,
             StorageWriteStatus::Stopped
         ) {
             return Ok(DerivativeExecutionStatus::WaitingStorage);
@@ -152,7 +156,11 @@ impl JobExecutor for DerivativeExecutor {
         match self.execute_job(&job).await {
             Ok(DerivativeExecutionStatus::Completed) => ExecutorOutcome::Finalized,
             Ok(DerivativeExecutionStatus::WaitingStorage) => ExecutorOutcome::WaitingStorage,
-            Err(error) => ExecutorOutcome::failed(error.error_class(), None),
+            Err(error) => ExecutorOutcome::failed_with_message(
+                error.error_class(),
+                None,
+                error.message().to_owned(),
+            ),
         }
     }
 }

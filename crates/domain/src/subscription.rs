@@ -121,6 +121,14 @@ impl SubscriptionSchedule {
         })
     }
 
+    pub fn first_run_after(
+        &self,
+        now: OffsetDateTime,
+    ) -> Result<OffsetDateTime, SubscriptionScheduleError> {
+        now.checked_add(Duration::minutes(self.interval_minutes))
+            .ok_or(SubscriptionScheduleError::OutOfRange)
+    }
+
     pub fn next_run_after(
         &self,
         scheduled_for: OffsetDateTime,

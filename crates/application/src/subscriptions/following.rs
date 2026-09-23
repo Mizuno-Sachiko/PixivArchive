@@ -9,7 +9,7 @@ where
         ownership: UnitExecutionOwnership,
         context: &PixivRequestContext,
         unit: &pixivarchive_db::SubscriptionRunUnitRecord,
-    ) -> Result<ExecutedPage, JobErrorClass> {
+    ) -> Result<ExecutedPage, JobExecutionFailure> {
         let account_id = unit.pixiv_account_id;
         let authors = match ownership {
             UnitExecutionOwnership::Synchronous => {
@@ -21,7 +21,7 @@ where
                     .await
             }
         }
-        .map_err(following_error_class)?;
+        .map_err(following_failure)?;
         let enabled_artist_ids: HashSet<_> = authors
             .into_iter()
             .filter(|author| author.enabled)
@@ -68,7 +68,7 @@ where
                         error = %error,
                         "Pixiv following request failed"
                     );
-                    pixiv_error_class(error.class())
+                    JobExecutionFailure::pixiv(error)
                 })?;
             items.extend(response.value.items);
             if page_limit.is_some_and(|limit| page >= limit) {
@@ -78,7 +78,7 @@ where
                 break;
             };
             if cursor.page <= page {
-                return Err(JobErrorClass::Permanent);
+                return Err(JobErrorClass::Permanent.into());
             }
             page = cursor.page;
         }
@@ -104,7 +104,7 @@ where
                     .await
             }
         }
-        .map_err(|error| database_error_class(&error))?;
+        .map_err(|error| JobExecutionFailure::database(&error))?;
         Ok(saved)
     }
 }

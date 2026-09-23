@@ -202,6 +202,7 @@ impl ImportRepository {
         &self,
         run_id: Uuid,
         error_class: &str,
+        error_message: Option<&str>,
     ) -> Result<(), DbError> {
         let updated = sqlx::query(
             r#"
@@ -210,7 +211,7 @@ impl ImportRepository {
                 discovered_count = 0,
                 saved_count = 0,
                 error_class = $2,
-                error_message = $2,
+                error_message = COALESCE($3, $2),
                 finished_at = NULL
             WHERE id = $1
               AND status = 'running'
@@ -218,6 +219,7 @@ impl ImportRepository {
         )
         .bind(run_id)
         .bind(error_class)
+        .bind(error_message)
         .execute(self.db.pool())
         .await?;
         if updated.rows_affected() != 1 {
@@ -231,6 +233,7 @@ impl ImportRepository {
         lease: JobLease,
         run_id: Uuid,
         error_class: &str,
+        error_message: Option<&str>,
     ) -> Result<(), DbError> {
         let mut tx = self.db.begin().await?;
         JobRepository::new(self.db.clone())
@@ -243,7 +246,7 @@ impl ImportRepository {
                 discovered_count = 0,
                 saved_count = 0,
                 error_class = $3,
-                error_message = $3,
+                error_message = COALESCE($4, $3),
                 finished_at = NULL
             WHERE id = $1
               AND job_id = $2
@@ -253,6 +256,7 @@ impl ImportRepository {
         .bind(run_id)
         .bind(lease.job_id)
         .bind(error_class)
+        .bind(error_message)
         .execute(&mut *tx)
         .await?;
         if updated.rows_affected() != 1 {

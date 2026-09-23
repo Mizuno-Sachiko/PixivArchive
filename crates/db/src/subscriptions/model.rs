@@ -21,7 +21,7 @@ pub struct CreateSubscription {
     pub interval_minutes: i64,
     pub lookback_pages: i64,
     pub params: Value,
-    pub next_run_at: Option<OffsetDateTime>,
+    pub scheduled_from: OffsetDateTime,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -35,7 +35,7 @@ pub struct UpdateSubscription {
     pub interval_minutes: i64,
     pub lookback_pages: i64,
     pub params: Value,
-    pub next_run_at: Option<OffsetDateTime>,
+    pub changed_at: OffsetDateTime,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -48,7 +48,7 @@ pub struct SubscriptionRecord {
     pub enabled: bool,
     pub schedule: Value,
     pub params: Value,
-    pub next_run_at: Option<OffsetDateTime>,
+    pub next_run_at: OffsetDateTime,
     pub pending_run: bool,
     pub recent_state: SubscriptionRecentState,
     pub revision: i64,

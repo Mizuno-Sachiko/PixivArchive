@@ -36,12 +36,11 @@ impl SubscriptionRepository {
     }
 }
 
-fn subscription_schedule_value(
+fn subscription_schedule(
     interval_minutes: i64,
     lookback_pages: i64,
-) -> Result<Value, DbError> {
+) -> Result<SubscriptionSchedule, DbError> {
     SubscriptionSchedule::new(interval_minutes, lookback_pages)
-        .map(SubscriptionSchedule::to_value)
         .map_err(|error| DbError::InvalidValue(error.to_string()))
 }
 

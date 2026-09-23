@@ -5,9 +5,10 @@ use pixivarchive_db::{
     JobStats, PixivAccountRecord,
 };
 use pixivarchive_domain::job::{
-    ClaimedJob, JobErrorClass, JobPriority, JobPriorityPolicy, JobQuotaSelection, JobState, NewJob,
+    ClaimedJob, JobErrorClass, JobLeaseStatus, JobPriority, JobPriorityPolicy, JobQuotaSelection,
+    JobState, NewJob,
 };
-use pixivarchive_pixiv::PixivErrorClass;
+use pixivarchive_pixiv::{PixivError, PixivErrorClass};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -34,6 +35,51 @@ pub fn pixiv_error_class(error: PixivErrorClass) -> JobErrorClass {
             JobErrorClass::Server
         }
         _ => JobErrorClass::Permanent,
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JobExecutionFailure {
+    pub error_class: JobErrorClass,
+    pub retry_after: Option<Duration>,
+    pub message: String,
+}
+
+impl JobExecutionFailure {
+    pub fn pixiv(error: PixivError) -> Self {
+        Self {
+            error_class: pixiv_error_class(error.class()),
+            retry_after: error.retry_after(),
+            message: error.to_string(),
+        }
+    }
+
+    pub fn database(error: &DbError) -> Self {
+        Self {
+            error_class: database_error_class(error),
+            retry_after: None,
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<JobErrorClass> for JobExecutionFailure {
+    fn from(error_class: JobErrorClass) -> Self {
+        Self {
+            error_class,
+            retry_after: None,
+            message: default_job_error_message(error_class).to_owned(),
+        }
+    }
+}
+
+fn default_job_error_message(error_class: JobErrorClass) -> &'static str {
+    match error_class {
+        JobErrorClass::Network => "Pixiv 网络请求失败",
+        JobErrorClass::Server => "服务暂时不可用或响应无法处理",
+        JobErrorClass::RateLimit => "Pixiv 请求频率受限",
+        JobErrorClass::CredentialInvalid => "Pixiv Cookie 已失效",
+        JobErrorClass::Permanent => "任务参数或来源数据无法处理",
     }
 }
 
@@ -430,6 +476,10 @@ impl JobService {
         self.repository
             .claim_next(lease_owner, selection, lease_duration)
             .await
+    }
+
+    pub async fn lease_status(&self, claimed: &ClaimedJob) -> Result<JobLeaseStatus, DbError> {
+        self.repository.lease_status(claimed).await
     }
 
     pub async fn heartbeat(

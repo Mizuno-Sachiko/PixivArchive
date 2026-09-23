@@ -126,7 +126,7 @@ async fn retained_history_gap_requests_snapshot_refresh() {
     let first = append_job_event(&db, &events, EventPayload::JobQueued { revision: 1 }).await;
     let second = append_job_event(&db, &events, EventPayload::JobClaimed { revision: 2 }).await;
     let third = append_job_event(&db, &events, EventPayload::JobCompleted { revision: 3 }).await;
-    sqlx::query("DELETE FROM app_event WHERE id IN ($1, $2)")
+    sqlx::query("DELETE FROM app_event WHERE published_id IN ($1, $2)")
         .bind(first)
         .bind(second)
         .execute(db.pool())
@@ -150,7 +150,7 @@ async fn cursor_immediately_before_oldest_event_replays_from_oldest() {
     let first = append_job_event(&db, &events, EventPayload::JobQueued { revision: 1 }).await;
     let second = append_job_event(&db, &events, EventPayload::JobClaimed { revision: 2 }).await;
     let third = append_job_event(&db, &events, EventPayload::JobCompleted { revision: 3 }).await;
-    sqlx::query("DELETE FROM app_event WHERE id = $1")
+    sqlx::query("DELETE FROM app_event WHERE published_id = $1")
         .bind(first)
         .execute(db.pool())
         .await
@@ -188,16 +188,70 @@ async fn replay_window_caps_single_batch_at_one_thousand_persisted_rows() {
     let db = _locked.db.clone();
     let events = EventRepository::new(db.clone());
     let cursor = append_job_event(&db, &events, EventPayload::JobQueued { revision: 1 }).await;
-    let inserted = insert_job_events_without_notify(&db, 1_001).await;
+    insert_job_events_without_notify(&db, 1_001).await;
 
     let window = events.replay_window(Some(cursor), 5_000).await.unwrap();
 
     let replayed_ids: Vec<_> = window.events.iter().map(|event| event.id).collect();
-    assert_eq!(replayed_ids, inserted[..1_000]);
+    assert_eq!(
+        replayed_ids,
+        (cursor + 1..=cursor + 1_000).collect::<Vec<_>>()
+    );
     assert_eq!(window.oldest_event_id, Some(cursor));
-    assert_eq!(window.latest_event_id, inserted.last().copied());
+    assert_eq!(window.latest_event_id, Some(cursor + 1_001));
     assert!(window.has_more);
     assert!(!window.snapshot_refresh);
+}
+
+#[tokio::test]
+async fn publication_order_follows_commit_visibility() {
+    let _locked = support::LockedDb::new().await;
+    let db = _locked.db.clone();
+    let events = EventRepository::new(db.clone());
+    let cursor = events
+        .replay_window(None, 100)
+        .await
+        .unwrap()
+        .latest_event_id
+        .unwrap_or(0);
+
+    let mut earlier_transaction = db.begin().await.unwrap();
+    events
+        .append_in_tx(
+            &mut earlier_transaction,
+            EventResource::Job,
+            Uuid::now_v7(),
+            EventPayload::JobQueued { revision: 1 },
+        )
+        .await
+        .unwrap();
+    let mut later_transaction = db.begin().await.unwrap();
+    events
+        .append_in_tx(
+            &mut later_transaction,
+            EventResource::Job,
+            Uuid::now_v7(),
+            EventPayload::JobClaimed { revision: 2 },
+        )
+        .await
+        .unwrap();
+    later_transaction.commit().await.unwrap();
+
+    let first_visible = events.list_after(cursor, 10).await.unwrap();
+    assert_eq!(first_visible.len(), 1);
+    assert!(matches!(
+        first_visible[0].payload,
+        EventPayload::JobClaimed { revision: 2 }
+    ));
+
+    earlier_transaction.commit().await.unwrap();
+    let second_visible = events.list_after(first_visible[0].id, 10).await.unwrap();
+    assert_eq!(second_visible.len(), 1);
+    assert!(matches!(
+        second_visible[0].payload,
+        EventPayload::JobQueued { revision: 1 }
+    ));
+    assert!(second_visible[0].id > first_visible[0].id);
 }
 
 #[tokio::test]
@@ -211,16 +265,22 @@ async fn replay_window_rejects_non_positive_limits() {
 }
 
 async fn append_job_event(db: &Db, events: &EventRepository, payload: EventPayload) -> i64 {
+    let cursor = events
+        .replay_window(None, 100)
+        .await
+        .unwrap()
+        .latest_event_id
+        .unwrap_or(0);
     let mut tx = db.begin().await.unwrap();
-    let event = events
+    events
         .append_in_tx(&mut tx, EventResource::Job, Uuid::now_v7(), payload)
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    event.id
+    events.list_after(cursor, 1).await.unwrap()[0].id
 }
 
-async fn insert_job_events_without_notify(db: &Db, count: i64) -> Vec<i64> {
+async fn insert_job_events_without_notify(db: &Db, count: i64) {
     let before: i64 = sqlx::query_scalar("SELECT coalesce(max(id), 0) FROM app_event")
         .fetch_one(db.pool())
         .await
@@ -237,9 +297,10 @@ async fn insert_job_events_without_notify(db: &Db, count: i64) -> Vec<i64> {
     .await
     .unwrap();
 
-    sqlx::query_scalar("SELECT id FROM app_event WHERE id > $1 ORDER BY id")
+    let inserted: i64 = sqlx::query_scalar("SELECT count(*) FROM app_event WHERE id > $1")
         .bind(before)
-        .fetch_all(db.pool())
+        .fetch_one(db.pool())
         .await
-        .unwrap()
+        .unwrap();
+    assert_eq!(inserted, count);
 }

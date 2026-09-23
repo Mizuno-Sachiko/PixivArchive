@@ -592,6 +592,13 @@ async fn retrying_a_failed_subscription_job_requeues_its_unit_and_parent_run() {
             .await
             .unwrap();
     assert_eq!(linked_state, "failed");
+    let parent_error: Option<String> =
+        sqlx::query_scalar("SELECT error_class FROM subscription_run WHERE id = $1")
+            .bind(run.run_id)
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    assert_eq!(parent_error.as_deref(), Some("permanent"));
 
     let failed = jobs.get(claimed.id).await.unwrap();
     jobs.retry_requested(failed.id, failed.resource_revision)

@@ -2,7 +2,7 @@ use super::{JobHeartbeatRecord, JobRepository};
 use crate::{DbError, EventRepository};
 use pixivarchive_domain::{
     event::{EventPayload, EventResource},
-    job::{ClaimedJob, JobPriority, JobQuotaSelection, JobState},
+    job::{ClaimedJob, JobLeaseStatus, JobPriority, JobQuotaSelection, JobState},
 };
 use sqlx::{Row, types::Json};
 use time::{Duration, OffsetDateTime};
@@ -160,6 +160,53 @@ impl JobRepository {
             resource_revision: row.get("resource_revision"),
         };
         Ok(Some(claimed))
+    }
+
+    pub async fn lease_status(&self, job: &ClaimedJob) -> Result<JobLeaseStatus, DbError> {
+        // Observe identity and expiry together using the same clock as lease writes.
+        // This read grants no write permission; every transition still validates its lease.
+        let row = sqlx::query(
+            r#"
+            SELECT state, attempts, resource_revision, lease_owner,
+                   lease_expires_at > now() AS unexpired
+            FROM job
+            WHERE id = $1
+            "#,
+        )
+        .bind(job.id)
+        .fetch_optional(self.db.pool())
+        .await?
+        .ok_or(DbError::NotFound)?;
+        let state_value: String = row.try_get("state")?;
+        let state = JobState::from_db_value(&state_value)
+            .ok_or_else(|| DbError::InvalidValue(format!("unknown job state {state_value}")))?;
+        let revision: i64 = row.try_get("resource_revision")?;
+        let attempt: i32 = row.try_get("attempts")?;
+        if state == JobState::Cancelled {
+            return Ok(JobLeaseStatus::Cancelled);
+        }
+        // Only completion of this attempt permits its executor to finish post-commit work.
+        // A newer attempt's completion must stop the old executor instead.
+        if state == JobState::Completed
+            && attempt == job.attempt_number
+            && Some(revision) == job.resource_revision.checked_add(1)
+        {
+            return Ok(JobLeaseStatus::Completed);
+        }
+        if state != JobState::Running
+            || attempt != job.attempt_number
+            || revision != job.resource_revision
+            || row.try_get::<Option<Uuid>, _>("lease_owner")? != Some(job.lease_owner)
+        {
+            return Ok(JobLeaseStatus::Superseded);
+        }
+        match row.try_get::<Option<bool>, _>("unexpired")? {
+            Some(true) => Ok(JobLeaseStatus::Active),
+            Some(false) => Ok(JobLeaseStatus::Expired),
+            None => Err(DbError::InvalidValue(
+                "running job lease expiry is missing".to_owned(),
+            )),
+        }
     }
 
     pub async fn heartbeat(

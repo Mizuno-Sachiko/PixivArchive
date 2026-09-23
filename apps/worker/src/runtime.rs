@@ -6,7 +6,9 @@ use crate::{
 use anyhow::Context;
 use pixivarchive_application::jobs::{JobService, QueueQuotaRotation, QueueQuotaWeights};
 use pixivarchive_db::DbError;
-use pixivarchive_domain::job::{JobErrorClass, JobKind, JobQuotaSelection, JobState};
+use pixivarchive_domain::job::{
+    ClaimedJob, JobErrorClass, JobKind, JobLeaseStatus, JobQuotaSelection,
+};
 use time::Duration;
 use tokio::{task::JoinSet, time::MissedTickBehavior};
 use uuid::Uuid;
@@ -152,31 +154,13 @@ impl WorkerRuntime {
             else {
                 return Ok(true);
             };
-            match outcome {
+            let (action, result) = match outcome {
                 ExecutorOutcome::Completed(completion) => {
-                    if self
-                        .transition_was_cancelled(
-                            job.id,
-                            self.service.complete(&job, completion).await,
-                            "completing",
-                        )
-                        .await?
-                    {
-                        return Ok(true);
-                    }
+                    ("completing", self.service.complete(&job, completion).await)
                 }
-                ExecutorOutcome::Finalized => {}
+                ExecutorOutcome::Finalized => return Ok(true),
                 ExecutorOutcome::WaitingStorage => {
-                    if self
-                        .transition_was_cancelled(
-                            job.id,
-                            self.service.wait_for_storage(&job).await,
-                            "waiting",
-                        )
-                        .await?
-                    {
-                        return Ok(true);
-                    }
+                    ("waiting", self.service.wait_for_storage(&job).await)
                 }
                 ExecutorOutcome::Failed {
                     error_class,
@@ -188,19 +172,16 @@ impl WorkerRuntime {
                         .failure_decision(&job, error_class, retry_after)
                         .await
                         .with_context(|| format!("classifying failure for job {}", job.id))?;
-                    if self
-                        .transition_was_cancelled(
-                            job.id,
-                            self.service
-                                .apply_failure(&job, error_class, &decision, message.as_deref())
-                                .await,
-                            "failing",
-                        )
-                        .await?
-                    {
-                        return Ok(true);
-                    }
+                    (
+                        "failing",
+                        self.service
+                            .apply_failure(&job, error_class, &decision, message.as_deref())
+                            .await,
+                    )
                 }
+            };
+            if let Err(error) = result {
+                self.resolve_lease_conflict(&job, error, action).await?;
             }
         } else {
             let result = self
@@ -213,11 +194,9 @@ impl WorkerRuntime {
                 )
                 .await
                 .map(|_| ());
-            if self
-                .transition_was_cancelled(job.id, result, "marking unregistered")
-                .await?
-            {
-                return Ok(true);
+            if let Err(error) = result {
+                self.resolve_lease_conflict(&job, error, "marking unregistered")
+                    .await?;
             }
         }
         Ok(true)
@@ -226,7 +205,7 @@ impl WorkerRuntime {
     async fn execute_with_heartbeats(
         &self,
         executor: std::sync::Arc<dyn crate::executors::JobExecutor>,
-        job: pixivarchive_domain::job::ClaimedJob,
+        job: ClaimedJob,
     ) -> anyhow::Result<Option<ExecutorOutcome>> {
         let mut heartbeat = tokio::time::interval(self.config.heartbeat_interval);
         heartbeat.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -260,41 +239,46 @@ impl WorkerRuntime {
             biased;
             outcome = &mut execute => Ok(Some(outcome)),
             error = &mut heartbeats => {
-                if matches!(error, DbError::RevisionConflict | DbError::LeaseConflict) {
-                    match self.service.get(job.id).await {
-                        Ok(record) if record.state == JobState::Cancelled => return Ok(None),
-                        Ok(record) if record.state == JobState::Completed => {
-                            return Ok(Some(execute.await));
-                        }
-                        _ => {}
-                    }
+                let status = self.resolve_lease_conflict(&job, error, "heartbeating").await?;
+                if status == JobLeaseStatus::Completed {
+                    // Media executors commit the job with their business result. Let only
+                    // that same attempt finish its post-commit cleanup and return Finalized.
+                    return Ok(Some(execute.await));
                 }
-                Err(error).with_context(|| format!("heartbeating job {}", job.id))
+                Ok(None)
             }
         }
     }
 
-    async fn transition_was_cancelled(
+    async fn resolve_lease_conflict(
         &self,
-        job_id: Uuid,
-        result: Result<(), DbError>,
+        job: &ClaimedJob,
+        error: DbError,
         action: &str,
-    ) -> anyhow::Result<bool> {
-        match result {
-            Ok(()) => Ok(false),
-            Err(error) if self.is_cancelled_conflict(job_id, &error).await => Ok(true),
-            Err(error) => Err(error).with_context(|| format!("{action} job {job_id}")),
+    ) -> anyhow::Result<JobLeaseStatus> {
+        if matches!(error, DbError::RevisionConflict | DbError::LeaseConflict) {
+            let status = self.service.lease_status(job).await.with_context(|| {
+                format!(
+                    "reading lease after {action} job {} failed: {error}",
+                    job.id
+                )
+            })?;
+            if status != JobLeaseStatus::Active {
+                tracing::info!(
+                    job_id = %job.id,
+                    job_kind = %job.kind,
+                    attempt = job.attempt_number,
+                    expected_revision = job.resource_revision,
+                    lease_owner = %job.lease_owner,
+                    action,
+                    ?status,
+                    ?error,
+                    "job attempt no longer holds an active lease"
+                );
+                return Ok(status);
+            }
         }
-    }
-
-    async fn is_cancelled_conflict(&self, job_id: Uuid, error: &DbError) -> bool {
-        if !matches!(error, DbError::RevisionConflict | DbError::LeaseConflict) {
-            return false;
-        }
-        matches!(
-            self.service.get(job_id).await,
-            Ok(record) if record.state == JobState::Cancelled
-        )
+        Err(error).with_context(|| format!("{action} job {}", job.id))
     }
 
     pub async fn run_until_shutdown(

@@ -6,6 +6,26 @@ fn schedule(interval_minutes: i64) -> SubscriptionSchedule {
 }
 
 #[test]
+fn first_run_starts_one_interval_after_creation() {
+    let created_at = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
+
+    assert_eq!(
+        schedule(60).first_run_after(created_at).unwrap(),
+        created_at + Duration::hours(1)
+    );
+}
+
+#[test]
+fn first_run_outside_the_supported_time_range_is_rejected() {
+    let created_at = Date::MAX.with_time(Time::MAX).assume_utc() - Duration::minutes(1);
+
+    assert_eq!(
+        schedule(15).first_run_after(created_at),
+        Err(SubscriptionScheduleError::OutOfRange)
+    );
+}
+
+#[test]
 fn future_schedule_keeps_its_original_anchor() {
     let now = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
     let scheduled_for = now + Duration::minutes(30);
