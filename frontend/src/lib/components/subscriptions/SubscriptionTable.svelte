@@ -67,7 +67,7 @@
         </td>
         <td>{subscription.schedule.interval_minutes ?? '—'}分钟</td>
         <td>
-          <ReadableTime value={subscription.next_run_at} empty="尚未安排" />
+          <ReadableTime value={subscription.next_run_at} />
         </td>
       </tr>
     {:else}

@@ -46,12 +46,14 @@
   >
     {#if activeMedia}
       {#if activePageIsUgoira && detail.ugoira}
-        <UgoiraCanvas
-          mediaRevisionId={activeMedia.id}
-          manifest={detail.ugoira}
-          playing={!viewerOpen}
-          limits={ugoiraLimits}
-        />
+        {#key activeMedia.id}
+          <UgoiraCanvas
+            mediaRevisionId={activeMedia.id}
+            manifest={detail.ugoira}
+            playing={!viewerOpen}
+            limits={ugoiraLimits}
+          />
+        {/key}
       {:else}
         <img
           src={activeMedia.source_url}

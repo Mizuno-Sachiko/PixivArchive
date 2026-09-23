@@ -85,6 +85,26 @@ describe('gallery query state', () => {
     ]);
   });
 
+  it('adds the selected current-account bookmark state', () => {
+    const query = createGalleryQueryStore();
+    query.bookmarkState = 'yes';
+
+    expect(query.build().groups[0].filters).toEqual([
+      {
+        type: 'boolean',
+        field: 'bookmarked_by_current_account',
+        value: true
+      }
+    ]);
+
+    query.bookmarkState = 'no';
+    expect(query.build().groups[0].filters[0]).toMatchObject({ value: false });
+
+    query.reset();
+    expect(query.bookmarkState).toBe('any');
+    expect(query.build().groups).toEqual([]);
+  });
+
   it('builds bookmark count filters from optional range bounds', () => {
     const query = createGalleryQueryStore();
     expect(query.build().groups).toEqual([]);

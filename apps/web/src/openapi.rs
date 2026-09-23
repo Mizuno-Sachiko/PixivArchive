@@ -14,7 +14,7 @@ use utoipa::{
     info(
         title = "PixivArchive API",
         description = "Single-user management API for PixivArchive",
-        version = "0.2.0"
+        version = "0.2.1"
     ),
     paths(
         crate::api::auth::login,

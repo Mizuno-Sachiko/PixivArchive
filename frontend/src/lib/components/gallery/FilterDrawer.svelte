@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { Dialog } from 'bits-ui';
+
   import Button from '$lib/components/ui/Button.svelte';
   import CheckboxFilterGroup from '$lib/components/ui/CheckboxFilterGroup.svelte';
   import Field from '$lib/components/ui/Field.svelte';
@@ -13,145 +15,166 @@
   }
 
   let { query, onApply, onClose }: Props = $props();
+  let open = $state(true);
 </script>
 
-<div
-  class="drawer-backdrop"
-  role="presentation"
-  onclick={(event) => {
-    if (event.currentTarget === event.target) onClose();
-  }}
->
-  <div class="filter-drawer glass-surface" role="dialog" aria-label="筛选条件">
-    <header>
-      <div>
-        <span>STRUCTURED FILTERS</span>
-        <h2>筛选条件</h2>
-      </div>
-      <button type="button" aria-label="关闭筛选条件" onclick={onClose}
-        >×</button
-      >
-    </header>
-
-    <div class="drawer-body">
-      <TextField
-        label="标签"
-        bind:value={query.tagText}
-        placeholder="多个标签用逗号分隔"
-      />
-      <Field label="标签匹配">
-        <SelectField
-          bind:value={query.tagOperator}
-          ariaLabel="标签匹配"
-          fullWidth
-          options={[
-            { value: 'any', label: '任意一个标签' },
-            { value: 'all', label: '全部标签' },
-            { value: 'exclude_any', label: '排除任意标签' },
-            { value: 'not_all', label: '不同时包含全部' },
-            { value: 'exact_set', label: '标签集合完全相同' }
-          ]}
-        />
-      </Field>
-      <Field label="标签范围">
-        <SelectField
-          bind:value={query.tagScope}
-          ariaLabel="标签范围"
-          fullWidth
-          options={[
-            { value: 'original_and_translation', label: '原标签与翻译' },
-            { value: 'original', label: '只看原标签' }
-          ]}
-        />
-      </Field>
-      <Field label="收藏数">
-        <div class="bookmark-range">
-          <input
-            type="number"
-            min="0"
-            step="1"
-            bind:value={query.minimumBookmarks}
-            placeholder="不限制"
-            aria-label="最低收藏数"
-          />
-          <span aria-hidden="true">—</span>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            bind:value={query.maximumBookmarks}
-            placeholder="不限制"
-            aria-label="最高收藏数"
-          />
+<Dialog.Root bind:open onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+  <Dialog.Portal>
+    <Dialog.Overlay class="drawer-backdrop" />
+    <Dialog.Content
+      class="filter-drawer glass-surface"
+      aria-label="筛选条件"
+      trapFocus
+      preventScroll={false}
+    >
+      <header>
+        <div>
+          <span>STRUCTURED FILTERS</span>
+          <h2>筛选条件</h2>
         </div>
-        {#if query.validationError}
-          <small class="range-error" role="alert">{query.validationError}</small
-          >
-        {/if}
-      </Field>
+        <button
+          type="button"
+          aria-label="关闭筛选条件"
+          onclick={() => (open = false)}>×</button
+        >
+      </header>
 
-      <CheckboxFilterGroup
-        legend="作品类型"
-        bind:values={query.workKinds}
-        options={[
-          { value: 'illustration', label: '插画' },
-          { value: 'manga', label: '漫画' },
-          { value: 'ugoira', label: '动图' }
-        ]}
-      />
+      <div class="drawer-body">
+        <TextField
+          label="标签"
+          bind:value={query.tagText}
+          placeholder="多个标签用逗号分隔"
+        />
+        <Field label="标签匹配">
+          <SelectField
+            bind:value={query.tagOperator}
+            ariaLabel="标签匹配"
+            fullWidth
+            options={[
+              { value: 'any', label: '任意一个标签' },
+              { value: 'all', label: '全部标签' },
+              { value: 'exclude_any', label: '排除任意标签' },
+              { value: 'not_all', label: '不同时包含全部' },
+              { value: 'exact_set', label: '标签集合完全相同' }
+            ]}
+          />
+        </Field>
+        <Field label="标签范围">
+          <SelectField
+            bind:value={query.tagScope}
+            ariaLabel="标签范围"
+            fullWidth
+            options={[
+              { value: 'original_and_translation', label: '原标签与翻译' },
+              { value: 'original', label: '只看原标签' }
+            ]}
+          />
+        </Field>
+        <Field label="收藏数">
+          <div class="bookmark-range">
+            <input
+              type="number"
+              min="0"
+              step="1"
+              bind:value={query.minimumBookmarks}
+              placeholder="不限制"
+              aria-label="最低收藏数"
+            />
+            <span aria-hidden="true">—</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              bind:value={query.maximumBookmarks}
+              placeholder="不限制"
+              aria-label="最高收藏数"
+            />
+          </div>
+          {#if query.validationError}
+            <small class="range-error" role="alert"
+              >{query.validationError}</small
+            >
+          {/if}
+        </Field>
 
-      <CheckboxFilterGroup
-        legend="年龄分级"
-        bind:values={query.ageRatings}
-        options={[
-          { value: 'all_age', label: '全年龄' },
-          { value: 'r18', label: 'R-18' },
-          { value: 'r18g', label: 'R-18G' }
-        ]}
-      />
-
-      <Field label="AI作品">
-        <SelectField
-          bind:value={query.aiGenerated}
-          ariaLabel="AI作品"
-          fullWidth
+        <CheckboxFilterGroup
+          legend="作品类型"
+          bind:values={query.workKinds}
           options={[
-            { value: 'any', label: '全部作品' },
-            { value: 'yes', label: '只显示AI作品' },
-            { value: 'no', label: '排除AI作品' }
+            { value: 'illustration', label: '插画' },
+            { value: 'manga', label: '漫画' },
+            { value: 'ugoira', label: '动图' }
           ]}
         />
-      </Field>
-    </div>
 
-    <footer>
-      <Button onclick={() => query.reset()}>清空条件</Button>
-      <Button
-        variant="primary"
-        disabled={Boolean(query.validationError)}
-        onclick={() => {
-          onApply();
-          onClose();
-        }}>应用筛选</Button
-      >
-    </footer>
-  </div>
-</div>
+        <CheckboxFilterGroup
+          legend="年龄分级"
+          bind:values={query.ageRatings}
+          options={[
+            { value: 'all_age', label: '全年龄' },
+            { value: 'r18', label: 'R-18' },
+            { value: 'r18g', label: 'R-18G' }
+          ]}
+        />
+
+        <Field label="收藏状态">
+          <SelectField
+            bind:value={query.bookmarkState}
+            ariaLabel="收藏状态"
+            fullWidth
+            options={[
+              { value: 'any', label: '全部作品' },
+              { value: 'yes', label: '已收藏' },
+              { value: 'no', label: '未收藏' }
+            ]}
+          />
+        </Field>
+
+        <Field label="AI作品">
+          <SelectField
+            bind:value={query.aiGenerated}
+            ariaLabel="AI作品"
+            fullWidth
+            options={[
+              { value: 'any', label: '全部作品' },
+              { value: 'yes', label: '只显示AI作品' },
+              { value: 'no', label: '排除AI作品' }
+            ]}
+          />
+        </Field>
+      </div>
+
+      <footer>
+        <Button onclick={() => query.reset()}>清空条件</Button>
+        <Button
+          variant="primary"
+          disabled={Boolean(query.validationError)}
+          onclick={() => {
+            onApply();
+            open = false;
+          }}>应用筛选</Button
+        >
+      </footer>
+    </Dialog.Content>
+  </Dialog.Portal>
+</Dialog.Root>
 
 <style>
-  .drawer-backdrop {
+  :global(.drawer-backdrop) {
     position: fixed;
     z-index: 80;
     inset: 0;
-    display: flex;
-    justify-content: end;
     background: rgba(2, 8, 14, 0.28);
   }
 
-  .filter-drawer {
+  :global(.filter-drawer) {
+    position: fixed;
+    z-index: 81;
+    inset: 0 0 0 auto;
     display: grid;
     width: min(430px, 100%);
     height: 100%;
+    margin: 0;
     grid-template-rows: auto 1fr auto;
     border-width: 0 0 0 1px;
     border-radius: 0;

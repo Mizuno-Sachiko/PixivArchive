@@ -125,6 +125,27 @@ describe('rule workbench store', () => {
     expect(store.loadError).toBe('');
   });
 
+  it('retries the selected rule when its detail fails during refresh', async () => {
+    const { api } = fakeApi();
+    api.loadDraft = vi
+      .fn<RuleWorkbenchApi['loadDraft']>()
+      .mockResolvedValueOnce(draft(ruleA.id, ruleA.name))
+      .mockRejectedValueOnce(new Error('draft unavailable'))
+      .mockResolvedValueOnce(draft(ruleA.id, ruleA.name));
+    const store = createRuleWorkbenchStore({ api, storage: memoryStorage() });
+    await store.initialize();
+
+    expect(await store.refresh()).toBe(false);
+    expect(store.loadError).toBe('规则暂时无法读取');
+
+    await store.retryLoad();
+
+    expect(api.listRules).toHaveBeenCalledTimes(2);
+    expect(api.loadDraft).toHaveBeenCalledTimes(3);
+    expect(store.selectedRuleId).toBe(ruleA.id);
+    expect(store.loadError).toBe('');
+  });
+
   it('does not replace a dirty rule when saving it before refresh fails', async () => {
     const { api } = fakeApi();
     api.saveDraft = vi.fn(async () => {
@@ -685,6 +706,59 @@ describe('rule workbench store', () => {
     expect(api.loadDraft).toHaveBeenCalledTimes(1);
   });
 
+  it('retries the rule whose detail failed to load', async () => {
+    const { api } = fakeApi();
+    api.loadDraft = vi
+      .fn()
+      .mockImplementationOnce(async (id) => draft(id, ruleA.name))
+      .mockRejectedValueOnce(new Error('draft unavailable'))
+      .mockImplementationOnce(async (id) => draft(id, ruleB.name));
+    const store = createRuleWorkbenchStore({ api, storage: memoryStorage() });
+    await store.initialize();
+
+    await store.selectRule(ruleB.id);
+    expect(store.loadError).toBe('规则暂时无法读取');
+
+    await store.retryLoad();
+
+    expect(store.selectedRuleId).toBe(ruleB.id);
+    expect(store.loadError).toBe('');
+  });
+
+  it('does not let an older retry clear a newer selection failure', async () => {
+    const { api } = fakeApi();
+    api.listRules = vi.fn(async () =>
+      [ruleA, ruleB, ruleC].map((rule) => structuredClone(rule))
+    );
+    const retry = deferred<RuleDraft | null>();
+    let ruleBLoads = 0;
+    let ruleCLoads = 0;
+    api.loadDraft = vi.fn(async (id) => {
+      if (id === ruleA.id) return draft(ruleA.id, ruleA.name);
+      if (id === ruleB.id) {
+        ruleBLoads += 1;
+        if (ruleBLoads === 1) throw new Error('draft unavailable');
+        return retry.promise;
+      }
+      ruleCLoads += 1;
+      if (ruleCLoads === 1) throw new Error('draft unavailable');
+      return draft(ruleC.id, ruleC.name);
+    });
+    const store = createRuleWorkbenchStore({ api, storage: memoryStorage() });
+    await store.initialize();
+    await store.selectRule(ruleB.id);
+
+    const olderRetry = store.retryLoad();
+    await store.selectRule(ruleC.id);
+    retry.resolve(draft(ruleB.id, ruleB.name));
+    await olderRetry;
+
+    expect(store.loadError).toBe('规则暂时无法读取');
+    await store.retryLoad();
+    expect(store.selectedRuleId).toBe(ruleC.id);
+    expect(store.loadError).toBe('');
+  });
+
   it('keeps the current rule when a selected rule draft cannot be loaded', async () => {
     const { api } = fakeApi();
     api.loadDraft = vi.fn(async (id) => {
@@ -765,6 +839,17 @@ describe('rule workbench store', () => {
 
     expect(store.selectedRuleId).toBe(ruleA.id);
     expect(store.selectedRule?.name).toBe(ruleA.name);
+  });
+
+  it('rejects JSON null before reading rule fields', async () => {
+    const { api } = fakeApi();
+    const store = createRuleWorkbenchStore({ api, storage: memoryStorage() });
+    await store.initialize();
+
+    await expect(store.importJson('null')).resolves.toBe(false);
+
+    expect(store.importError).toBe('规则JSON必须是对象');
+    expect(api.importRule).not.toHaveBeenCalled();
   });
 
   it('waits for an active save before deleting the selected rule', async () => {

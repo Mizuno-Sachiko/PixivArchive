@@ -1380,8 +1380,6 @@ export interface components {
             /** Format: int64 */
             lookback_pages: number;
             name: string;
-            /** Format: date-time */
-            next_run_at?: string | null;
             params: {
                 [key: string]: unknown;
             };
@@ -2363,7 +2361,7 @@ export interface components {
             kind: components["schemas"]["SubscriptionKindDto"];
             name: string;
             /** Format: date-time */
-            next_run_at: string | null;
+            next_run_at: string;
             params: {
                 [key: string]: unknown;
             };
@@ -2689,8 +2687,6 @@ export interface components {
             /** Format: int64 */
             lookback_pages: number;
             name: string;
-            /** Format: date-time */
-            next_run_at?: string | null;
             params: {
                 [key: string]: unknown;
             };

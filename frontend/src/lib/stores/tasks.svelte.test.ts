@@ -47,6 +47,75 @@ describe('tasks state', () => {
     expect(tasksStore.selected?.task.id).toBe(secondTaskId);
   });
 
+  it('clears stale details while another task is loading', async () => {
+    const secondRequest = deferred<TaskDetail>();
+    taskApi.get.mockImplementation((id: string) => {
+      if (id === firstTaskId) {
+        return Promise.resolve(detail(firstTaskId, 'waiting_account'));
+      }
+      if (id === secondTaskId) return secondRequest.promise;
+      throw new Error(`unexpected task ${id}`);
+    });
+    await tasksStore.select(firstTaskId);
+
+    const secondSelection = tasksStore.select(secondTaskId);
+
+    expect(tasksStore.selectedId).toBe(secondTaskId);
+    expect(tasksStore.selected).toBeNull();
+    await tasksStore.cancel();
+    expect(taskApi.cancel).not.toHaveBeenCalled();
+
+    secondRequest.resolve(detail(secondTaskId, 'waiting_storage'));
+    await secondSelection;
+  });
+
+  it('does not operate on a stale detail while the same task reloads', async () => {
+    const refreshRequest = deferred<TaskDetail>();
+    taskApi.get
+      .mockResolvedValueOnce(detail(firstTaskId, 'waiting_account'))
+      .mockReturnValueOnce(refreshRequest.promise);
+    await tasksStore.select(firstTaskId);
+
+    const refresh = tasksStore.select(firstTaskId);
+
+    expect(tasksStore.selected).toBeNull();
+    await tasksStore.cancel();
+    expect(taskApi.cancel).not.toHaveBeenCalled();
+
+    refreshRequest.resolve(detail(firstTaskId, 'running'));
+    await refresh;
+  });
+
+  it('retries the failed detail request for the selected task', async () => {
+    taskApi.get
+      .mockRejectedValueOnce(new Error('temporarily unavailable'))
+      .mockResolvedValueOnce(detail(firstTaskId, 'running'));
+
+    await tasksStore.select(firstTaskId);
+    expect(tasksStore.detailError).toBe('任务详情暂时无法读取');
+
+    await tasksStore.retryDetail();
+
+    expect(taskApi.get).toHaveBeenCalledTimes(2);
+    expect(tasksStore.detailError).toBe('');
+    expect(tasksStore.selected?.task.id).toBe(firstTaskId);
+  });
+
+  it('clears a detail error when the selected task leaves the list', async () => {
+    taskApi.get.mockRejectedValueOnce(new Error('temporarily unavailable'));
+    await tasksStore.select(firstTaskId);
+    expect(tasksStore.detailError).toBe('任务详情暂时无法读取');
+
+    taskApi.list.mockResolvedValueOnce({
+      items: [],
+      summary: { total: 0, running: 0, waiting: 0, requires_attention: 0 }
+    });
+    await tasksStore.load();
+
+    expect(tasksStore.selectedId).toBeNull();
+    expect(tasksStore.detailError).toBe('');
+  });
+
   it('does not reselect a cancelled task after the user selects another task', async () => {
     const cancelRequest = deferred<Task>();
     const secondRequest = deferred<TaskDetail>();
@@ -147,7 +216,7 @@ describe('tasks state', () => {
     taskApi.list.mockRejectedValueOnce(new Error('temporarily unavailable'));
     expect(await tasksStore.load()).toBe(false);
     expect(tasksStore.items).toEqual([current]);
-    expect(tasksStore.error).toBe('任务列表暂时无法读取');
+    expect(tasksStore.listError).toBe('任务列表暂时无法读取');
   });
 });
 

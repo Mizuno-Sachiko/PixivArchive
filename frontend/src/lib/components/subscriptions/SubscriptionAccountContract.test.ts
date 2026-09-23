@@ -40,7 +40,7 @@ function subscription(overrides: Partial<Subscription> = {}): Subscription {
     enabled: true,
     schedule: { interval_minutes: 1440, lookback_pages: 2 },
     params: { modes: ['daily'], contents: ['all'] },
-    next_run_at: null,
+    next_run_at: '2026-08-01T00:00:00Z',
     pending_run: false,
     recent_state: 'never_run',
     revision: 1,

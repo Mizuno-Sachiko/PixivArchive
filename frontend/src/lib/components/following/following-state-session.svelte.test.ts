@@ -205,7 +205,7 @@ function subscription(
     enabled,
     kind: 'following',
     name: '关注订阅',
-    next_run_at: null,
+    next_run_at: '2026-08-01T00:00:00Z',
     params: {},
     pending_run: false,
     recent_state: 'never_run',

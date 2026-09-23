@@ -279,12 +279,14 @@
       >
         {#if currentPage?.current_media}
           {#if isUgoira && detail.ugoira}
-            <UgoiraCanvas
-              mediaRevisionId={currentPage.current_media.id}
-              manifest={detail.ugoira}
-              {playing}
-              limits={ugoiraLimits}
-            />
+            {#key currentPage.current_media.id}
+              <UgoiraCanvas
+                mediaRevisionId={currentPage.current_media.id}
+                manifest={detail.ugoira}
+                {playing}
+                limits={ugoiraLimits}
+              />
+            {/key}
           {:else if sourceUrl(currentPage)}
             <img
               src={sourceUrl(currentPage)}

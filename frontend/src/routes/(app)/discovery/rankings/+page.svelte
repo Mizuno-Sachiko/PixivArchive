@@ -145,8 +145,7 @@
             .map((content) => content.value)
             .filter((content) => selectedContents.includes(content)),
           max_rank: maxRank
-        },
-        next_run_at: null
+        }
       });
       if (pixivAccountStore.currentForAction?.account_id === accountId) {
         created = subscription;

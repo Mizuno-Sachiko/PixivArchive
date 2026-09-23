@@ -66,7 +66,7 @@
     <RetryMessage
       message={ruleWorkbenchStore.loadError}
       busy={ruleWorkbenchStore.catalogOperationActive}
-      onRetry={() => refreshCoordinator?.retry()}
+      onRetry={() => ruleWorkbenchStore.retryLoad()}
     />
   {/if}
 
