@@ -21,7 +21,8 @@ class TasksStore {
   selected = $state<TaskDetail | null>(null);
   view = $state<TaskView>('all');
   loading = $state(false);
-  error = $state('');
+  listError = $state('');
+  detailError = $state('');
 
   private readonly loadRequests = new LatestRequest();
   private readonly selectionRequests = new LatestRequest();
@@ -54,7 +55,7 @@ class TasksStore {
       if (!this.loadRequests.isCurrent(request)) return false;
       this.items = response.items;
       this.summary = response.summary;
-      this.error = '';
+      this.listError = '';
       if (
         this.selectedId &&
         !this.items.some((task) => task.id === this.selectedId)
@@ -62,11 +63,12 @@ class TasksStore {
         this.selectionRequests.invalidate();
         this.selectedId = null;
         this.selected = null;
+        this.detailError = '';
       }
       return true;
     } catch {
       if (!this.loadRequests.isCurrent(request)) return false;
-      this.error = '任务列表暂时无法读取';
+      this.listError = '任务列表暂时无法读取';
       return false;
     } finally {
       if (this.loadRequests.isCurrent(request)) this.loading = false;
@@ -75,22 +77,27 @@ class TasksStore {
 
   async select(id: string): Promise<void> {
     const request = this.selectionRequests.begin();
+    this.selected = null;
     this.selectedId = id;
+    this.detailError = '';
     try {
       const selected = await taskApi.get(id);
       if (!this.selectionRequests.isCurrent(request) || this.selectedId !== id)
         return;
       this.selected = selected;
-      this.error = '';
     } catch {
       if (!this.selectionRequests.isCurrent(request) || this.selectedId !== id)
         return;
-      this.error = '任务详情暂时无法读取';
+      this.detailError = '任务详情暂时无法读取';
     }
   }
 
+  async retryDetail(): Promise<void> {
+    if (this.selectedId && this.detailError) await this.select(this.selectedId);
+  }
+
   async retry(): Promise<void> {
-    if (!this.selected) return;
+    if (!this.selected || this.selected.task.id !== this.selectedId) return;
     const taskId = this.selected.task.id;
     const updated = await taskApi.retry(taskId, this.selected.task.revision);
     this.replace(updated);
@@ -100,7 +107,7 @@ class TasksStore {
   }
 
   async cancel(): Promise<void> {
-    if (!this.selected) return;
+    if (!this.selected || this.selected.task.id !== this.selectedId) return;
     const taskId = this.selected.task.id;
     const updated = await taskApi.cancel(taskId, this.selected.task.revision);
     this.replace(updated);
@@ -123,7 +130,8 @@ class TasksStore {
     this.selected = null;
     this.view = 'all';
     this.loading = false;
-    this.error = '';
+    this.listError = '';
+    this.detailError = '';
   }
 
   private replace(updated: Task): void {

@@ -15,14 +15,20 @@
   import ReadableTime from '$lib/components/ui/ReadableTime.svelte';
   import StatusPill from '$lib/components/ui/StatusPill.svelte';
   import TextField from '$lib/components/ui/TextField.svelte';
-  import { subscriptionTriggerLabel } from '$lib/labels';
+  import {
+    errorClassLabel,
+    subscriptionRunStateLabel,
+    subscriptionTriggerLabel
+  } from '$lib/labels';
   import {
     MAX_SUBSCRIPTION_INTERVAL_MINUTES,
     MAX_SUBSCRIPTION_LOOKBACK_PAGES,
     MIN_SUBSCRIPTION_INTERVAL_MINUTES,
     subscriptionScheduleError
   } from '$lib/subscription-schedule';
+  import { LatestRequest, type RequestToken } from '$lib/latest-request';
   import { subscriptionPresentation } from '$lib/subscription-status';
+  import { subscriptionRunStateTone } from '$lib/task-status';
 
   import SubscriptionDefinition from './SubscriptionDefinition.svelte';
 
@@ -47,7 +53,7 @@
   let deleteConfirmOpen = $state(false);
   let deleteError = $state('');
   let deleteReturnFocus = $state<HTMLElement | null>(null);
-  let auxiliaryRevision = 0;
+  const auxiliaryRequests = new LatestRequest();
   let actionRevision = 0;
   let fixedSubscription = $derived(
     subscription?.kind === 'following' || subscription?.kind === 'bookmarks'
@@ -62,13 +68,16 @@
       activeId = null;
       cursors = [];
       runs = [];
-      auxiliaryRevision += 1;
+      auxiliaryRequests.invalidate();
       actionRevision += 1;
       busy = false;
       return;
     }
-    if (current.id === activeId) return;
-    const request = ++auxiliaryRevision;
+    if (current.id === activeId) {
+      void loadAuxiliary(current.id);
+      return;
+    }
+    auxiliaryRequests.invalidate();
     actionRevision += 1;
     activeId = current.id;
     name = current.name;
@@ -81,22 +90,26 @@
     deleteError = '';
     deleteReturnFocus = null;
     busy = false;
-    void loadAuxiliary(current.id, request);
+    void loadAuxiliary(current.id);
   });
 
-  async function loadAuxiliary(id: string, request: number): Promise<void> {
+  async function loadAuxiliary(
+    id: string,
+    failureMessage = '运行记录或游标暂时无法读取'
+  ): Promise<boolean> {
+    const request = auxiliaryRequests.begin();
     try {
       const [loadedCursors, loadedRuns] = await Promise.all([
         subscriptionApi.cursors(id),
         subscriptionApi.runs(id)
       ]);
-      if (request !== auxiliaryRevision || activeId !== id) return;
+      if (!isCurrentAuxiliary(id, request)) return true;
       cursors = loadedCursors;
       runs = loadedRuns;
+      return true;
     } catch {
-      if (request === auxiliaryRevision && activeId === id) {
-        error = '运行记录或游标暂时无法读取';
-      }
+      if (isCurrentAuxiliary(id, request)) error = failureMessage;
+      return false;
     }
   }
 
@@ -124,8 +137,7 @@
         name: name.trim(),
         interval_minutes: intervalMinutes,
         lookback_pages: lookbackPages,
-        params: current.params,
-        next_run_at: current.next_run_at
+        params: current.params
       });
       onSaved(updated);
       if (isCurrentAction(current.id, request)) {
@@ -153,13 +165,7 @@
           accepted.trigger_kind === 'merged_pending'
             ? '已合并一次待运行'
             : '已经加入定时采集队列';
-        try {
-          await refreshSubscription(id, request);
-        } catch {
-          if (isCurrentAction(id, request)) {
-            error = '任务已经建立，但最新运行状态暂时无法读取';
-          }
-        }
+        await refreshSubscription(id, request);
       }
     } catch {
       if (isCurrentAction(id, request)) {
@@ -208,13 +214,7 @@
       onSaved(updated);
       if (isCurrentAction(id, request)) {
         message = '本次运行已经停止';
-        try {
-          await reloadAuxiliary(id, request);
-        } catch {
-          if (isCurrentAction(id, request)) {
-            error = '运行已经停止，但运行记录暂时无法读取';
-          }
-        }
+        await loadAuxiliary(id, '运行已经停止，但运行记录暂时无法读取');
       }
     } catch {
       if (isCurrentAction(id, request)) {
@@ -229,20 +229,16 @@
     id: string,
     request: number
   ): Promise<void> {
-    const updated = await subscriptionApi.get(id);
-    if (!isCurrentAction(id, request)) return;
-    onSaved(updated);
-    await reloadAuxiliary(id, request);
-  }
-
-  async function reloadAuxiliary(id: string, request: number): Promise<void> {
-    const [loadedCursors, loadedRuns] = await Promise.all([
-      subscriptionApi.cursors(id),
-      subscriptionApi.runs(id)
-    ]);
-    if (!isCurrentAction(id, request)) return;
-    cursors = loadedCursors;
-    runs = loadedRuns;
+    try {
+      const updated = await subscriptionApi.get(id);
+      if (!isCurrentAction(id, request)) return;
+      onSaved(updated);
+      await loadAuxiliary(id, '任务已经建立，但最新运行状态暂时无法读取');
+    } catch {
+      if (isCurrentAction(id, request)) {
+        error = '任务已经建立，但最新运行状态暂时无法读取';
+      }
+    }
   }
 
   async function removeSubscription(): Promise<void> {
@@ -267,6 +263,10 @@
 
   function isCurrentAction(id: string, request: number): boolean {
     return activeId === id && actionRevision === request;
+  }
+
+  function isCurrentAuxiliary(id: string, request: RequestToken): boolean {
+    return activeId === id && auxiliaryRequests.isCurrent(request);
   }
 
   function openDeleteDialog(returnFocus: HTMLElement): void {
@@ -386,11 +386,33 @@
         <section class="run-list" aria-label="订阅运行记录">
           {#each runs as run (run.id)}
             <article>
-              <div>
+              <div class="run-heading">
                 <strong>{subscriptionTriggerLabel(run.trigger_kind)}</strong>
-                <span><ReadableTime value={run.created_at} /></span>
+                <StatusPill
+                  label={subscriptionRunStateLabel(run.state)}
+                  tone={subscriptionRunStateTone(run.state)}
+                />
               </div>
+              <dl class="run-times">
+                <div>
+                  <dt>建立</dt>
+                  <dd><ReadableTime value={run.created_at} exact /></dd>
+                </div>
+                <div>
+                  <dt>开始</dt>
+                  <dd><ReadableTime value={run.started_at} exact /></dd>
+                </div>
+                <div>
+                  <dt>完成</dt>
+                  <dd><ReadableTime value={run.finished_at} exact /></dd>
+                </div>
+              </dl>
               <p>发现 {run.discovered_count} · 忽略 {run.ignored_count}</p>
+              {#if run.error_class}
+                <p class="run-error">
+                  错误：{errorClassLabel(run.error_class)}
+                </p>
+              {/if}
             </article>
           {:else}
             <p class="inline-message">这条订阅还没有运行记录</p>
@@ -450,8 +472,8 @@
 
   .cursor-list span,
   .cursor-list small,
-  .run-list span,
-  .run-list p {
+  .run-list p,
+  .run-times {
     color: var(--color-text-3);
     font-size: 0.7rem;
   }
@@ -466,13 +488,26 @@
     overflow-wrap: anywhere;
   }
 
-  .run-list article > div {
+  .run-heading,
+  .run-times > div {
     display: flex;
     justify-content: space-between;
     gap: 0.8rem;
   }
 
+  .run-times {
+    display: grid;
+    gap: 0.15rem;
+    margin: 0;
+  }
+
+  .run-times dt,
+  .run-times dd,
   .run-list p {
     margin: 0;
+  }
+
+  .run-list .run-error {
+    color: var(--color-error);
   }
 </style>

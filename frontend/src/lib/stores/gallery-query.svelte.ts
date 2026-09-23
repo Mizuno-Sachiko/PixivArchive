@@ -39,6 +39,7 @@ export class GalleryQueryStore {
   workKinds = $state<string[]>([]);
   ageRatings = $state<string[]>([]);
   aiGenerated = $state<'any' | 'yes' | 'no'>('any');
+  bookmarkState = $state<'any' | 'yes' | 'no'>('any');
 
   reset(query: GallerySearch = createGalleryQuery()) {
     this.query = structuredClone(query);
@@ -51,6 +52,7 @@ export class GalleryQueryStore {
     this.workKinds = [];
     this.ageRatings = [];
     this.aiGenerated = 'any';
+    this.bookmarkState = 'any';
   }
 
   get validationError(): string {
@@ -133,6 +135,13 @@ export class GalleryQueryStore {
         type: 'boolean',
         field: 'ai_generated',
         value: this.aiGenerated === 'yes'
+      });
+    }
+    if (this.bookmarkState !== 'any') {
+      filters.push({
+        type: 'boolean',
+        field: 'bookmarked_by_current_account',
+        value: this.bookmarkState === 'yes'
       });
     }
 

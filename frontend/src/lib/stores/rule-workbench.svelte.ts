@@ -48,6 +48,7 @@ export class RuleWorkbenchStore {
   private readonly documentSession: RuleDocumentSession;
   private readonly previewSession: RulePreviewSession;
   private initializationPromise: Promise<void> | null = null;
+  private failedRuleId: string | null = null;
 
   constructor(options: RuleWorkbenchOptions = {}) {
     const api = options.api ?? ruleWorkbenchApi;
@@ -195,8 +196,10 @@ export class RuleWorkbenchStore {
       const selected = this.catalog.summary(storedRuleId) ?? rules[0] ?? null;
       if (selected) await this.documentSession.loadRule(selected.id);
       this.loadError = '';
+      this.failedRuleId = null;
       this.initialized = true;
     } catch {
+      this.failedRuleId = null;
       this.loadError = '规则暂时无法读取';
     }
   }
@@ -209,6 +212,7 @@ export class RuleWorkbenchStore {
     if (!this.catalog.idle) return false;
 
     const previousRules = this.rules;
+    let requestedRuleId: string | null = null;
     try {
       const result = await this.catalog.perform(
         { kind: 'refreshing' },
@@ -221,18 +225,21 @@ export class RuleWorkbenchStore {
           const rules = await this.catalog.load();
           const selected =
             this.catalog.summary(selectedRuleId) ?? rules[0] ?? null;
+          requestedRuleId = selected?.id ?? null;
           if (selected) {
             await this.documentSession.loadRule(selected.id, revision);
           } else {
             this.documentSession.clearSelection();
           }
           this.loadError = '';
+          this.failedRuleId = null;
           return true;
         }
       );
       return result.started ? result.value : false;
     } catch {
       this.rules = previousRules;
+      this.failedRuleId = requestedRuleId;
       this.loadError = '规则暂时无法读取';
       return false;
     }
@@ -242,10 +249,33 @@ export class RuleWorkbenchStore {
     if (this.deletingRule) return;
     try {
       await this.documentSession.selectRule(ruleId);
-      if (this.selectedRuleId === ruleId) this.loadError = '';
+      if (this.selectedRuleId === ruleId) {
+        this.failedRuleId = null;
+        this.loadError = '';
+      }
     } catch {
+      this.failedRuleId = ruleId;
       this.loadError = '规则暂时无法读取';
     }
+  }
+
+  async retryLoad(): Promise<void> {
+    const ruleId = this.failedRuleId;
+    if (ruleId && this.catalog.summary(ruleId)) {
+      const revision = this.documentSession.beginTransition();
+      try {
+        await this.documentSession.loadRule(ruleId, revision);
+        if (!this.documentSession.isCurrent(ruleId, revision)) return;
+        this.failedRuleId = null;
+        this.loadError = '';
+      } catch {
+        if (this.documentSession.revision !== revision) return;
+        this.failedRuleId = ruleId;
+        this.loadError = '规则暂时无法读取';
+      }
+      return;
+    }
+    await this.refresh();
   }
 
   async createRule(name: string): Promise<boolean> {
@@ -271,8 +301,10 @@ export class RuleWorkbenchStore {
           const created = await this.catalog.create(normalized);
           try {
             await this.documentSession.loadRule(created.id, revision);
+            this.failedRuleId = null;
             this.loadError = '';
           } catch {
+            this.failedRuleId = created.id;
             this.loadError = '规则已创建，但内容暂时无法读取';
           }
           return true;
@@ -309,8 +341,10 @@ export class RuleWorkbenchStore {
           const revision = this.documentSession.beginTransition();
           try {
             await this.documentSession.loadRule(copied.id, revision);
+            this.failedRuleId = null;
             this.loadError = '';
           } catch {
+            this.failedRuleId = copied.id;
             this.loadError = '规则已复制，但内容暂时无法读取';
           }
           return true;
@@ -400,7 +434,9 @@ export class RuleWorkbenchStore {
           if (next) {
             try {
               await this.documentSession.loadRule(next.id);
+              this.failedRuleId = null;
             } catch {
+              this.failedRuleId = next.id;
               this.loadError = '规则已删除，但下一条规则暂时无法读取';
               return true;
             }
@@ -613,13 +649,18 @@ export class RuleWorkbenchStore {
     const ruleId = this.selectedRuleId;
     const revision = this.documentSession.revision;
     if (!ruleId) return false;
-    let definition: RuleDefinition;
+    let parsed: unknown;
     try {
-      definition = JSON.parse(source) as RuleDefinition;
+      parsed = JSON.parse(source);
     } catch {
       this.importError = 'JSON格式无法读取';
       return false;
     }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      this.importError = '规则JSON必须是对象';
+      return false;
+    }
+    const definition = parsed as RuleDefinition;
     if (definition.id !== ruleId) {
       this.importError = '导入规则ID与当前规则不一致';
       return false;

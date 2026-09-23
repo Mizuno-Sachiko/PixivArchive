@@ -99,6 +99,75 @@ test('gallery serializes structured search and keeps Ugoira badges visible', asy
     );
 });
 
+test('filter dropdown stays fixed while the background gallery scrolls', async ({
+  page
+}) => {
+  await mockApi(page);
+  await page.route('**/api/gallery/search', (route) =>
+    fulfillJson(route, 200, {
+      items: Array.from({ length: 48 }, (_, index) => ({
+        ...galleryWork(),
+        id: `0198f64c-42a2-7374-bace-${String(index).padStart(12, '0')}`,
+        pixiv_work_id: 1001 + index,
+        cover_available: false,
+        cover_url: null
+      })),
+      next_cursor: null
+    })
+  );
+  await page.goto('/gallery');
+  await page.getByRole('button', { name: '筛选条件' }).click();
+  const trigger = page.getByLabel('标签匹配', { exact: true });
+  await trigger.click();
+  const popup = page.getByRole('listbox');
+  await expect(popup).toBeVisible();
+  const wrapper = popup.locator('..');
+  const before = await popup.boundingBox();
+  const transform = await wrapper.evaluate(
+    (element) => getComputedStyle(element).transform
+  );
+  expect(before).not.toBeNull();
+
+  await page.mouse.move(100, 400);
+  await page.mouse.wheel(0, 400);
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeGreaterThan(0);
+
+  // A fixed drawer must not rely on JS cancelling document scroll offsets.
+  await expect(wrapper).toHaveCSS('position', 'fixed');
+  await expect(wrapper).toHaveCSS('transform', transform);
+  const after = await popup.boundingBox();
+  expect(after).not.toBeNull();
+  expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(1);
+  await page.getByRole('option', { name: '全部标签', exact: true }).click();
+  await expect(trigger).toContainText('全部标签');
+});
+
+test('filter drawer keeps keyboard focus and restores its trigger', async ({
+  page
+}) => {
+  await mockApi(page);
+  await page.goto('/gallery');
+  const trigger = page.getByRole('button', { name: '筛选条件' });
+  await trigger.click();
+  const dialog = page.getByRole('dialog', { name: '筛选条件' });
+  await expect(dialog).toBeVisible();
+  expect(
+    await dialog.evaluate((element) => element.contains(document.activeElement))
+  ).toBe(true);
+
+  await page.getByLabel('标签匹配', { exact: true }).click();
+  await expect(page.getByRole('listbox')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
 test('non-all-age masking uses the shared placeholder in gallery and context cards', async ({
   page
 }) => {

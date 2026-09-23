@@ -1,4 +1,7 @@
-import type { SubscriptionRecentState } from './api/subscriptions';
+import type {
+  SubscriptionRecentState,
+  SubscriptionRun
+} from './api/subscriptions';
 import type { AccountState, JobPriority } from './api/system';
 
 const SUBSCRIPTION_STATE_LABELS = {
@@ -51,6 +54,18 @@ export function subscriptionTriggerLabel(trigger: string): string {
       merged_pending: '合并等待'
     }[trigger] ?? trigger
   );
+}
+
+export function subscriptionRunStateLabel(
+  state: SubscriptionRun['state']
+): string {
+  return {
+    queued: '正在等待',
+    running: '正在运行',
+    succeeded: '已经完成',
+    failed: '运行失败',
+    cancelled: '已取消'
+  }[state];
 }
 
 export function taskKindLabel(kind: string): string {

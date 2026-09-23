@@ -63,11 +63,18 @@
     ]}
   />
 
-  {#if tasksStore.error}
+  {#if tasksStore.listError}
     <RetryMessage
-      message={tasksStore.error}
+      message={tasksStore.listError}
       busy={tasksStore.loading}
       onRetry={() => taskRefresh.retry()}
+    />
+  {/if}
+  {#if tasksStore.detailError}
+    <RetryMessage
+      message={tasksStore.detailError}
+      busy={false}
+      onRetry={() => tasksStore.retryDetail()}
     />
   {/if}
 

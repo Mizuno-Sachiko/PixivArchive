@@ -53,7 +53,13 @@
     <Icon name="chevron" size={16} />
   </Select.Trigger>
   <Select.Portal>
-    <Select.Content class="pa-select-content" align="start" sideOffset={6}>
+    <!-- Fixed positioning keeps viewport-anchored controls independent of document scrolling. -->
+    <Select.Content
+      class="pa-select-content"
+      align="start"
+      sideOffset={6}
+      strategy="fixed"
+    >
       <Select.Viewport class="pa-select-viewport">
         {#each options as option (option.value)}
           <Select.Item
