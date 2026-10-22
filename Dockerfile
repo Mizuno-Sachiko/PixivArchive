@@ -1,4 +1,4 @@
-FROM node:22.23.1-bookworm-slim AS frontend-builder
+FROM node:22.23.4-bookworm-slim AS frontend-builder
 
 WORKDIR /src
 RUN corepack enable && corepack prepare pnpm@11.8.0 --activate
